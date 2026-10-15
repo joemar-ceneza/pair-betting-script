@@ -91,3 +91,7 @@ MIN_SIMILAR_STAKE_RATE = 0.70  # similar-stake rounds / opposite rounds
 BET_TIME_WINDOW_SECONDS = 10  # first bets in the round placed this close
 MIN_CLOSE_TIMING_RATE = 0.70  # close-timing rounds / shared rounds
 MAX_HEDGE_NET_PCT = 5.0  # |combined net| / combined turnover on opposite rounds
+
+# One-way flow (chip dumping): the same account wins this share of opposite rounds.
+# With only 2-3 opposite rounds this can happen by chance — check the loser's balance.
+MIN_ONE_WAY_RATE = 0.80

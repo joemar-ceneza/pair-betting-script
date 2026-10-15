@@ -34,6 +34,7 @@ BET_COLUMNS = [
 ]
 PAIR_COLUMNS = [
     "risk",
+    "pattern",
     "user_a",
     "user_b",
     "currencies",
@@ -47,11 +48,15 @@ PAIR_COLUMNS = [
     "opposite_turnover",
     "opposite_net",
     "net_pct",
+    "one_way_rate_pct",
+    "flow_direction",
+    "flow_amount",
     "shared_ips",
     "signals",
 ]
 EVIDENCE_COLUMNS = [
     "risk",
+    "pattern",
     "user_a",
     "user_b",
     "game",

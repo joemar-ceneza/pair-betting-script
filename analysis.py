@@ -123,7 +123,7 @@ def _match_rounds(rounds_a: list[dict], index_b: dict) -> list[tuple[dict, dict]
 
 
 # ======================================================
-# SCORING
+# ROUND CLASSIFICATION AND MEASUREMENTS
 # ======================================================
 def _classify_round(round_a: dict, round_b: dict) -> str:
     """OPPOSITE = one won / one lost, TIE = both pushed, CONFLICT = anything else."""
@@ -167,8 +167,36 @@ def _measure_hedge(opposite: list[tuple]) -> tuple[float, float, Optional[float]
     return turnover, net, net_pct
 
 
+def _measure_flow(opposite: list[tuple], user_a: str, user_b: str) -> tuple[float, str, str, float]:
+    """
+    Return (share of opposite rounds won by the more-winning account, winner, loser,
+    amount the loser lost on opposite rounds). High share = money moving one way.
+    """
+    if not opposite:
+        return 0.0, "-", "-", 0.0
+    wins_a = sum(1 for round_a, _ in opposite if round_a["result"] == "WON")
+    a_is_winner = wins_a * 2 >= len(opposite)
+    winner, loser = (user_a, user_b) if a_is_winner else (user_b, user_a)
+    winner_wins = wins_a if a_is_winner else len(opposite) - wins_a
+    loser_net = sum(round_b["winlost"] if a_is_winner else round_a["winlost"] for round_a, round_b in opposite)
+    return winner_wins / len(opposite), winner, loser, -loser_net
+
+
+# ======================================================
+# RISK RULES
+# ======================================================
+def _is_consistent(opposite_count: int, consistency: float) -> bool:
+    """Enough opposite rounds, and almost every shared round is opposite or a tie."""
+    return opposite_count >= config.MIN_OPPOSITE_ROUNDS and consistency >= config.MIN_CONSISTENCY_RATE
+
+
+def _is_one_way(opposite_count: int, flow_rate: float) -> bool:
+    """The same account wins nearly every opposite round (chip dumping)."""
+    return opposite_count >= config.MIN_OPPOSITE_ROUNDS and flow_rate >= config.MIN_ONE_WAY_RATE
+
+
 def _collect_signals(
-    similar_rate: float, timing_rate: float, net_pct: Optional[float], shared_ips: set[str]
+    similar_rate: float, timing_rate: float, net_pct: Optional[float], shared_ips: set[str], is_one_way: bool
 ) -> list[str]:
     """List the supporting signals present for a pair."""
     signals = []
@@ -178,14 +206,15 @@ def _collect_signals(
         signals.append("close timing")
     if net_pct is not None and net_pct <= config.MAX_HEDGE_NET_PCT:
         signals.append("hedged net")
+    if is_one_way:
+        signals.append("one-way flow")
     if shared_ips:
         signals.append("shared IP")
     return signals
 
 
-def _rate_risk(opposite_count: int, consistency: float, signals: list[str], has_shared_rounds: bool) -> Optional[str]:
+def _rate_risk(is_consistent: bool, opposite_count: int, signals: list[str], has_shared_rounds: bool) -> Optional[str]:
     """HIGH / MEDIUM / LOW / NONE, or None when the pair has nothing in common."""
-    is_consistent = opposite_count >= config.MIN_OPPOSITE_ROUNDS and consistency >= config.MIN_CONSISTENCY_RATE
     if is_consistent and len(signals) >= 2:
         return "HIGH"
     if is_consistent:
@@ -197,6 +226,16 @@ def _rate_risk(opposite_count: int, consistency: float, signals: list[str], has_
     return None
 
 
+def _pick_pattern(is_consistent: bool, is_one_way: bool) -> str:
+    """CHIP DUMP when money flows one way, HEDGE when wins swap, '-' when not consistent."""
+    if not is_consistent:
+        return "-"
+    return "CHIP DUMP" if is_one_way else "HEDGE"
+
+
+# ======================================================
+# PAIR SUMMARY
+# ======================================================
 def _summarize_pair(
     user_a: str, user_b: str, matches: list[tuple], shared_ips: set[str], currencies: tuple[str, str]
 ) -> dict:
@@ -208,9 +247,15 @@ def _summarize_pair(
     close = [m for m in matches if _bet_gap_seconds(*m) <= config.BET_TIME_WINDOW_SECONDS]
     consistency = _rate(len(opposite) + len(groups["TIE"]), len(matches))
     turnover, net, net_pct = _measure_hedge(opposite)
-    signals = _collect_signals(_rate(len(similar), len(opposite)), _rate(len(close), len(matches)), net_pct, shared_ips)
+    flow_rate, winner, loser, flow_amount = _measure_flow(opposite, user_a, user_b)
+    is_consistent = _is_consistent(len(opposite), consistency)
+    is_one_way = _is_one_way(len(opposite), flow_rate)
+    signals = _collect_signals(
+        _rate(len(similar), len(opposite)), _rate(len(close), len(matches)), net_pct, shared_ips, is_one_way
+    )
     return {
-        "risk": _rate_risk(len(opposite), consistency, signals, bool(matches)),
+        "risk": _rate_risk(is_consistent, len(opposite), signals, bool(matches)),
+        "pattern": _pick_pattern(is_consistent, is_one_way),
         "user_a": user_a,
         "user_b": user_b,
         "currencies": currencies[0] if same_currency else f"{currencies[0]}/{currencies[1]}",
@@ -224,6 +269,9 @@ def _summarize_pair(
         "opposite_turnover": round(turnover, 2),
         "opposite_net": round(net, 2),
         "net_pct": round(net_pct, 2) if net_pct is not None else "-",
+        "one_way_rate_pct": round(flow_rate * 100, 1),
+        "flow_direction": f"{loser} -> {winner}" if is_one_way else "-",
+        "flow_amount": round(flow_amount, 2) if is_one_way else "-",
         "shared_ips": ", ".join(sorted(shared_ips)) or "-",
         "signals": ", ".join(signals) or "-",
     }
@@ -251,6 +299,7 @@ def _build_evidence(summary: dict, matches: list[tuple]) -> list[dict]:
         rows.append(
             {
                 "risk": summary["risk"],
+                "pattern": summary["pattern"],
                 "user_a": round_a["username"],
                 "user_b": round_b["username"],
                 "game": round_a["game"],
@@ -268,10 +317,17 @@ def _build_evidence(summary: dict, matches: list[tuple]) -> list[dict]:
 # ======================================================
 # REPORTING
 # ======================================================
+def _format_flow(summary: dict) -> str:
+    """'100.0% (B -> A, 310,000.00)' when one-way, otherwise just the rate."""
+    if summary["flow_direction"] == "-":
+        return f"{summary['one_way_rate_pct']}%"
+    return f"{summary['one_way_rate_pct']}% ({summary['flow_direction']}, {summary['flow_amount']:,.2f})"
+
+
 def _log_pair_report(summary: dict) -> None:
     """Log one flagged pair: '=' header, then one aligned line per field."""
     net_pct = f"{summary['net_pct']}%" if summary["net_pct"] != "-" else "-"
-    log_utils.log_section(f"{summary['risk']} | {summary['user_a']} <-> {summary['user_b']}")
+    log_utils.log_section(f"{summary['risk']} | {summary['pattern']} | {summary['user_a']} <-> {summary['user_b']}")
     log_utils.log_lines(
         [
             log_utils.field("Currency", summary["currencies"]),
@@ -284,6 +340,7 @@ def _log_pair_report(summary: dict) -> None:
             log_utils.field("Close timing", summary["close_timing_rounds"]),
             log_utils.field("Opposite turnover", f"{summary['opposite_turnover']:,.2f}"),
             log_utils.field("Opposite net", f"{summary['opposite_net']:+,.2f} ({net_pct})"),
+            log_utils.field("One-way flow", _format_flow(summary)),
             log_utils.field("Shared IPs", summary["shared_ips"]),
             log_utils.field("Signals", summary["signals"]),
         ]

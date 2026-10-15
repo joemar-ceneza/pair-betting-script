@@ -12,13 +12,25 @@ find pair betting (two accounts betting opposite sides of the same rounds).
    - **OPPOSITE** — one won, the other lost
    - **TIE** — both pushed (a tie with one on Banker, one on Player)
    - **CONFLICT** — both won, both lost, or anything else
-3. Supporting signals: similar stakes, bets placed within seconds,
-   combined net near zero (hedged), shared IP.
+3. Supporting signals:
+   - **similar stakes** — round stakes within 80% of each other
+   - **close timing** — bets placed within seconds of each other
+   - **hedged net** — combined net near zero (within 5% of turnover)
+   - **one-way flow** — the same account wins 80%+ of opposite rounds
+   - **shared IP** — both accounts used the same IP
 4. Risk:
    - **HIGH** — 2+ opposite rounds, 80%+ of shared rounds opposite or tie, and 2+ signals
    - **MEDIUM** — consistent as above, with 0–1 signals
    - **LOW** — shared IP, or opposite rounds that are not consistent enough
    - **NONE** — shared rounds but nothing suspicious (CSV only)
+5. Pattern (for consistent pairs):
+   - **HEDGE** — wins swap between the two accounts; they cover each other's risk
+   - **CHIP DUMP** — one account keeps losing to the other; money is being moved,
+     often a bonus balance into an account that can withdraw. The report shows
+     the direction (`loser -> winner`) and the amount moved.
+
+With only 2–3 opposite rounds, one-way flow can happen by chance. Check the
+loser's cash balance: a balance at or near zero supports chip dumping.
 
 All thresholds are in the `PAIR-BETTING DETECTION` section of `config.py`.
 
@@ -93,7 +105,7 @@ Example: checking 10/14 on the morning of 10/15 gives
 |---|---|
 | `player_info_YYYYMMDD.csv` | Basic information per player |
 | `bets_YYYYMMDD.csv` | Every Live Casino bet |
-| `pair_betting_YYYYMMDD.csv` | Every pair with shared rounds or a shared IP, ranked HIGH / MEDIUM / LOW / NONE, with signals |
+| `pair_betting_YYYYMMDD.csv` | Every pair with shared rounds or a shared IP: risk, pattern (HEDGE / CHIP DUMP), signals, one-way flow direction and amount |
 | `pair_rounds_YYYYMMDD.csv` | Every shared round per pair: round type, stakes, results, seconds between bets, reference numbers |
 
 ## Building the Exe (Nuitka)
