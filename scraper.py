@@ -75,6 +75,14 @@ _INFO_LABELS = [
 
 
 # ======================================================
+# THROTTLE
+# ======================================================
+def _pause(page: Page) -> None:
+    """Deliberate pause between LEO actions so the site is not hit too fast (STEP_DELAY_SECONDS)."""
+    page.wait_for_timeout(config.STEP_DELAY_SECONDS * 1000)
+
+
+# ======================================================
 # LOGIN
 # ======================================================
 def _dismiss_login_warning(leo_page: Page) -> None:
@@ -304,6 +312,7 @@ def _read_live_casino_bets(betlist_page: Page, live_row: Optional[dict], usernam
     """Follow the statement's Live Casino link (old or recent date) and parse the bets."""
     if live_row is None or not live_row["href"]:
         return []
+    _pause(betlist_page)
     bets = _parse_bets(_read_betlist_rows(betlist_page, live_row["href"], username), username)
     if not bets:
         logging.warning("Statement shows Live Casino betting but the bet list returned no rows.")
@@ -314,11 +323,14 @@ def _read_live_casino_bets(betlist_page: Page, live_row: Optional[dict], usernam
 # PER-PLAYER PROCESSING
 # ======================================================
 def _process_player(leo_page: Page, betlist_page: Page, username: str, report_date: date) -> tuple[dict, list[dict]]:
-    """Search → basic info → Stmt (win/loss, turnover) → bet list for one player."""
+    """Search → basic info → Stmt (win/loss, turnover) → bet list, pausing between LEO actions."""
     balance_frame = _search_player(leo_page, username)
     info = _read_player_info(balance_frame, username)
+    _pause(leo_page)
     statement_frame = _open_statement(leo_page, username)
+    _pause(leo_page)
     _show_turnover(statement_frame, username, report_date)
+    _pause(leo_page)
     live_row = _find_live_casino_row(statement_frame, report_date)
     info.update(_statement_figures(live_row))
     bets = _read_live_casino_bets(betlist_page, live_row, username)
@@ -389,6 +401,7 @@ def run_scraper(usernames: list[str], leo_username: str, leo_password: str, repo
             except Exception:
                 _save_error_screenshot(leo_page, "login")
                 raise
+            _pause(leo_page)
             for index, username in enumerate(usernames, start=1):
                 _refresh_if_due(leo_page, index)
                 position = f"{index}/{len(usernames)}"
