@@ -64,6 +64,10 @@ LEO_REFRESH_INTERVAL = 300
 RETRY_ATTEMPTS = 3
 RETRY_DELAY = 2
 
+# Deliberate pause between LEO page actions so the site is not hit too fast.
+# This is a throttle, not a replacement for element waits. Raise to 5 if errors continue.
+STEP_DELAY_SECONDS = 2
+
 # ======================================================
 # DATES
 # ======================================================
