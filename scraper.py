@@ -2,9 +2,8 @@ import time
 import logging
 from datetime import date, datetime
 from typing import Optional
-from urllib.parse import quote, urlencode, urljoin
 
-from playwright.sync_api import Frame, Page, sync_playwright
+from playwright.sync_api import Browser, Frame, Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 import config
@@ -12,6 +11,7 @@ import log_utils
 import utils
 
 _BET_ROWS_SELECTOR = "table.MgmtTableBorder > tbody > tr"
+_STATEMENT_ROWS_SELECTOR = "#tblExchange > tbody > tr"
 
 # Reads every bet row in one browser call; rows without 8 cells are skipped.
 _EXTRACT_ROWS_JS = """
@@ -30,6 +30,34 @@ rows => rows.map(row => {
         product_id: link ? link.dataset.productid : '',
     };
 }).filter(Boolean)
+"""
+
+# Reads every daily-statement row: date, type, product, cash balance (win/loss),
+# turnover and the absolute URL of the date link (the bet list for Betting rows).
+_EXTRACT_STATEMENT_JS = """
+rows => rows.filter(row => row.id !== 'totalRow').map(row => {
+    const cells = [...row.querySelectorAll(':scope > td')];
+    if (cells.length < 4) return null;
+    const link = cells[1].querySelector('a');
+    const cash = row.querySelector('td[name="cashBal"]');
+    const turnover = row.querySelector('td[name="turnover"]');
+    return {
+        date: cells[1].textContent.trim(),
+        type: cells[2].textContent.trim(),
+        product: cells[3].textContent.trim(),
+        winloss: cash ? cash.textContent.trim() : '',
+        turnover: turnover ? turnover.textContent.trim() : '',
+        href: link ? link.href : '',
+    };
+}).filter(Boolean)
+"""
+
+# The statement date inputs are readonly, so set them directly.
+_SET_DATE_RANGE_JS = """
+([fromText, toText]) => {
+    document.getElementById('dpFrom').value = fromText;
+    document.getElementById('dpTo').value = toText;
+}
 """
 
 _INFO_LABELS = [
@@ -78,6 +106,15 @@ def _refresh_if_due(leo_page: Page, position: int) -> None:
         leo_page.reload()
         leo_page.wait_for_load_state("load")
         utils.get_frame(leo_page, "menu", config.FRAME_TIMEOUT)
+
+
+def _close_browser(browser: Browser) -> None:
+    """Close the browser; if it is already gone (e.g. run stopped with Ctrl+C), just note it."""
+    try:
+        browser.close()
+        logging.info("Browser closed cleanly.")
+    except Exception as error:
+        logging.warning("Browser was already closed (%s).", type(error).__name__)
 
 
 # ======================================================
@@ -134,7 +171,6 @@ def _read_player_info(frame: Frame, username: str) -> dict:
     cash_balance = _read_field(frame, "Cash Balance", "//span")
     return {
         "username": username,
-        "cid": frame.locator("#cid").first.get_attribute("value"),
         "customer": _read_field(frame, "Customer"),
         "currency": _read_currency(cash_balance),
         "login_name": _read_field(frame, "Login Name"),
@@ -149,23 +185,60 @@ def _read_player_info(frame: Frame, username: str) -> dict:
 
 
 # ======================================================
-# BET LIST
+# DAILY STATEMENT (Stmt button → 'contents' frame)
 # ======================================================
-def _build_betlist_url(page_url: str, cid: str, username: str, report_date: date) -> str:
-    """Build the Live Casino bet list URL for one player and one full day."""
+def _wait_for_statement(frame: Frame, username: str) -> None:
+    """Wait until the statement table for this player is shown."""
+    caption = frame.locator("#tblExchange caption", has_text=f"Statement : {username}")
+    caption.wait_for(timeout=config.PAGE_TIMEOUT)
+
+
+def _open_statement(leo_page: Page, username: str) -> Frame:
+    """Click the Stmt account button and wait for the daily statement to load."""
+    menu_frame = utils.get_frame(leo_page, "menu", config.FRAME_TIMEOUT)
+    menu_frame.click("#stmt")
+    contents_frame = utils.get_frame(leo_page, "contents", config.FRAME_TIMEOUT)
+    _wait_for_statement(contents_frame, username)
+    return contents_frame
+
+
+def _show_turnover(frame: Frame, username: str, report_date: date) -> None:
+    """
+    Narrow the statement to the report date, tick 'Show Turnover' (accepting the
+    'heavy action' confirm, which reloads the page), then tick 'Show all columns'.
+    """
     date_text = report_date.strftime(config.INPUT_DATE_FORMAT)
-    params = {
-        "product": config.LIVE_CASINO_PRODUCT_ID,
-        "frmStatement": "1",
-        "cid": cid,
-        "cname": username,
-        "dpFrom": f"{date_text} {config.DAY_START}",
-        "dpTo": f"{date_text} {config.DAY_END}",
+    frame.evaluate(_SET_DATE_RANGE_JS, [f"{date_text} {config.DAY_START}", f"{date_text} {config.DAY_END}"])
+    frame.page.once("dialog", lambda dialog: dialog.accept())
+    with frame.expect_navigation(timeout=config.PAGE_TIMEOUT):
+        frame.click("#chkShowTurnover")
+    _wait_for_statement(frame, username)
+    frame.click("#showCols")
+
+
+def _find_live_casino_row(frame: Frame, report_date: date) -> Optional[dict]:
+    """Return the Live Casino 'Betting' row for the report date, or None if there was no play."""
+    date_text = report_date.strftime(config.INPUT_DATE_FORMAT)
+    for row in frame.eval_on_selector_all(_STATEMENT_ROWS_SELECTOR, _EXTRACT_STATEMENT_JS):
+        is_betting = row["type"] == "Betting" and row["product"] == config.LIVE_CASINO_PRODUCT_NAME
+        if is_betting and row["date"] == date_text:
+            return row
+    return None
+
+
+def _statement_figures(live_row: Optional[dict]) -> dict:
+    """Win/loss (Cash Balance column) and turnover from the Live Casino row; 0 when no play."""
+    if live_row is None:
+        return {"turnover": 0.0, "winloss": 0.0}
+    return {
+        "turnover": utils.parse_amount(live_row["turnover"]) if live_row["turnover"] else 0.0,
+        "winloss": utils.parse_amount(live_row["winloss"]) if live_row["winloss"] else 0.0,
     }
-    query = urlencode(params, quote_via=quote, safe="/:")
-    return f"{urljoin(page_url, config.BETLIST_PATH)}?{query}"
 
 
+# ======================================================
+# BET LIST (opened from the statement's own link)
+# ======================================================
 def _read_betlist_rows(betlist_page: Page, url: str, username: str) -> list[dict]:
     """Open the bet list and return the raw text of every bet row."""
     betlist_page.goto(url, timeout=config.PAGE_TIMEOUT)
@@ -227,24 +300,38 @@ def _parse_bets(raw_rows: list[dict], username: str) -> list[dict]:
     return bets
 
 
+def _read_live_casino_bets(betlist_page: Page, live_row: Optional[dict], username: str) -> list[dict]:
+    """Follow the statement's Live Casino link (old or recent date) and parse the bets."""
+    if live_row is None or not live_row["href"]:
+        return []
+    bets = _parse_bets(_read_betlist_rows(betlist_page, live_row["href"], username), username)
+    if not bets:
+        logging.warning("Statement shows Live Casino betting but the bet list returned no rows.")
+    return bets
+
+
 # ======================================================
 # PER-PLAYER PROCESSING
 # ======================================================
 def _process_player(leo_page: Page, betlist_page: Page, username: str, report_date: date) -> tuple[dict, list[dict]]:
-    """Search → basic info → bet list for one player (login already done)."""
-    contents_frame = _search_player(leo_page, username)
-    info = _read_player_info(contents_frame, username)
-    url = _build_betlist_url(contents_frame.url, info["cid"], username, report_date)
-    raw_rows = _read_betlist_rows(betlist_page, url, username)
-    return info, _parse_bets(raw_rows, username)
+    """Search → basic info → Stmt (win/loss, turnover) → bet list for one player."""
+    balance_frame = _search_player(leo_page, username)
+    info = _read_player_info(balance_frame, username)
+    statement_frame = _open_statement(leo_page, username)
+    _show_turnover(statement_frame, username, report_date)
+    live_row = _find_live_casino_row(statement_frame, report_date)
+    info.update(_statement_figures(live_row))
+    bets = _read_live_casino_bets(betlist_page, live_row, username)
+    info["bet_count"] = len(bets)
+    return info, bets
 
 
-def _build_player_report(info: dict, bets: list[dict]) -> list[str]:
-    """Build the aligned info + bet summary lines for one player."""
+def _build_player_report(info: dict) -> list[str]:
+    """Build the aligned info + statement figures lines for one player."""
     lines = [log_utils.field(label, info[key]) for key, label in _INFO_LABELS]
-    lines.append(log_utils.field("Bets", len(bets)))
-    lines.append(log_utils.field("Turnover", f"{sum(b['turnover'] for b in bets):,.2f}"))
-    lines.append(log_utils.field("Win/Loss", f"{sum(b['winlost'] for b in bets):+,.2f}"))
+    lines.append(log_utils.field("Turnover", f"{info['turnover']:,.2f}"))
+    lines.append(log_utils.field("Win/Loss", f"{info['winloss']:+,.2f}"))
+    lines.append(log_utils.field("Bets", info["bet_count"]))
     return lines
 
 
@@ -277,7 +364,7 @@ def _handle_player(
         _save_error_screenshot(leo_page, username)
         logging.info("[%s] %s — ERROR (%.1fs)", position, username, time.monotonic() - started)
         return None, [], str(error)
-    log_utils.log_lines(_build_player_report(info, bets))
+    log_utils.log_lines(_build_player_report(info))
     logging.info("[%s] %s — done, %d bets (%.1fs)", position, username, len(bets), time.monotonic() - started)
     return info, bets, None
 
@@ -287,8 +374,9 @@ def _handle_player(
 # ======================================================
 def run_scraper(usernames: list[str], leo_username: str, leo_password: str, report_date: date) -> dict:
     """
-    Log into LEO once, then for each player collect basic info and the
-    Live Casino bet list for report_date. Returns players, bets and failures.
+    Log into LEO once, then for each player collect basic info, the Live Casino
+    win/loss and turnover from the daily statement, and the bet list for report_date.
+    Returns players, bets and failures.
     """
     players, bets, failures = [], [], []
     with sync_playwright() as p:
@@ -311,6 +399,5 @@ def run_scraper(usernames: list[str], leo_username: str, leo_password: str, repo
                 players.append(info)
                 bets.extend(player_bets)
         finally:
-            browser.close()
-            logging.info("Browser closed cleanly.")
+            _close_browser(browser)
     return {"players": players, "bets": bets, "failures": failures}

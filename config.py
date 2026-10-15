@@ -48,8 +48,7 @@ SUCCESS_PREFIXES = ("Saved", "Successfully", "Logged in", "Browser closed cleanl
 # LEO SITE
 # ======================================================
 LEO_LOGIN_URL = "http://leo-a01.sbobet.com.tw:8088/Default.aspx"
-BETLIST_PATH = "/modules/misc/betlist-lc.aspx"
-LIVE_CASINO_PRODUCT_ID = "7"  # Live Casino & Casino Games
+LIVE_CASINO_PRODUCT_NAME = "Live Casino & Casino Games"  # PRODUCT column text on the statement
 LEO_CURRENCY_MAP = {"TB": "Tb"}
 USERNAME_PATTERN = r"^[A-Za-z0-9_.@-]+$"
 

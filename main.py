@@ -34,6 +34,8 @@ def _setup_logging() -> str:
     console = logging.StreamHandler(sys.stderr)
     console.setFormatter(log_utils.build_console_formatter(sys.stderr, config.LOG_FORMAT, config.SUCCESS_PREFIXES))
     logging.basicConfig(level=logging.INFO, handlers=[log_file, console])
+    # Playwright's internal asyncio tasks dump tracebacks when a run is stopped mid-way; hide them
+    logging.getLogger("asyncio").setLevel(logging.CRITICAL)
     return log_path
 
 
@@ -91,6 +93,13 @@ def _collect_report_date() -> date:
             logging.warning("Invalid date '%s' — use MM/DD/YYYY.", text)
 
 
+def _warn_if_no_bets(scrape_result: dict) -> None:
+    """Warn when every player returned zero bets, so it is not mistaken for a clean result."""
+    player_count = len(scrape_result["players"])
+    if player_count and not scrape_result["bets"]:
+        logging.warning("No Live Casino bets found for any of the %d players on this date.", player_count)
+
+
 # ======================================================
 # LOG BLOCKS
 # ======================================================
@@ -106,7 +115,7 @@ def _log_banner(report_date: date, player_count: int, log_path: str) -> None:
         [
             log_utils.field("Report date", report_date.strftime(config.INPUT_DATE_FORMAT)),
             log_utils.field("Time window", f"{config.DAY_START} - {config.DAY_END}"),
-            log_utils.field("Product", "Live Casino & Casino Games"),
+            log_utils.field("Product", config.LIVE_CASINO_PRODUCT_NAME),
             log_utils.field("Players", player_count),
             log_utils.field("Headless", config.HEADLESS),
             log_utils.field("Settle tolerance", f"{config.SETTLE_TOLERANCE_SECONDS}s"),
@@ -167,9 +176,10 @@ def main() -> None:
     report_date = _collect_report_date()
     _log_banner(report_date, len(usernames), log_path)
 
-    # Step 4: Scrape basic info and bet lists
+    # Step 4: Scrape basic info, statement figures and bet lists
     _log_step(4, f"Scraping {len(usernames)} players")
     scrape_result = scraper.run_scraper(usernames, leo_username, leo_password, report_date)
+    _warn_if_no_bets(scrape_result)
 
     # Step 5: Detect pair betting
     _log_step(5, "Analysing pair betting")
@@ -185,6 +195,9 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
+    except KeyboardInterrupt:
+        logging.warning("Run cancelled by user.")
+        sys.exit(130)
     except Exception as error:
         logging.exception("Run failed: %s", error)
         sys.exit(1)

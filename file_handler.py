@@ -17,6 +17,9 @@ PLAYER_COLUMNS = [
     "last_logged_url",
     "status",
     "cash_balance",
+    "turnover",
+    "winloss",
+    "bet_count",
 ]
 BET_COLUMNS = [
     "username",
