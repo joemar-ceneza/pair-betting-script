@@ -111,7 +111,9 @@ def _log_banner(report_date: date, player_count: int, log_path: str) -> None:
             log_utils.field("Headless", config.HEADLESS),
             log_utils.field("Settle tolerance", f"{config.SETTLE_TOLERANCE_SECONDS}s"),
             log_utils.field("Min opposite", config.MIN_OPPOSITE_ROUNDS),
-            log_utils.field("Min opposite rate", f"{config.MIN_OPPOSITE_RATE:.0%}"),
+            log_utils.field("Min consistency", f"{config.MIN_CONSISTENCY_RATE:.0%}"),
+            log_utils.field("Bet time window", f"{config.BET_TIME_WINDOW_SECONDS}s"),
+            log_utils.field("Max hedge net", f"{config.MAX_HEDGE_NET_PCT}%"),
             log_utils.field("Output folder", utils.build_dated_folder(config.OUTPUT_DIR, report_date)),
             log_utils.field("Log file", log_path),
         ]
@@ -128,6 +130,7 @@ def _log_summary(scrape_result: dict, analysis_result: dict, output_files: list[
         log_utils.field("Pairs HIGH", risk_counts["HIGH"]),
         log_utils.field("Pairs MEDIUM", risk_counts["MEDIUM"]),
         log_utils.field("Pairs LOW", risk_counts["LOW"]),
+        log_utils.field("Pairs NONE (CSV)", risk_counts["NONE"]),
         log_utils.field("Execution time", f"{elapsed:.1f}s"),
     ]
     for reason, count in Counter(reason for _, reason in scrape_result["failures"]).most_common():

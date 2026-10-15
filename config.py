@@ -76,8 +76,18 @@ DAY_END = "23:59"
 # ======================================================
 # PAIR-BETTING DETECTION
 # ======================================================
-SETTLE_TOLERANCE_SECONDS = 2  # bets settling this close = same round
-MIN_OPPOSITE_ROUNDS = 5  # minimum WON-vs-LOSE rounds to flag
-MIN_OPPOSITE_RATE = 0.70  # opposite rounds / shared rounds
-STAKE_SIMILARITY_RATIO = 0.80  # smaller stake / bigger stake
+# Bets settling this close (same account or two accounts, same table) = same round
+SETTLE_TOLERANCE_SECONDS = 2
+
+# A pair is "consistent" with at least MIN_OPPOSITE_ROUNDS won-vs-lost rounds AND
+# at least MIN_CONSISTENCY_RATE of shared rounds being opposite or tie-together.
+# Lower MIN_OPPOSITE_ROUNDS = catches short sessions, but more chance hits.
+MIN_OPPOSITE_ROUNDS = 2
+MIN_CONSISTENCY_RATE = 0.80
+
+# Supporting signals (2 or more + consistent = HIGH)
+STAKE_SIMILARITY_RATIO = 0.80  # smaller round stake / bigger round stake
 MIN_SIMILAR_STAKE_RATE = 0.70  # similar-stake rounds / opposite rounds
+BET_TIME_WINDOW_SECONDS = 10  # first bets in the round placed this close
+MIN_CLOSE_TIMING_RATE = 0.70  # close-timing rounds / shared rounds
+MAX_HEDGE_NET_PCT = 5.0  # |combined net| / combined turnover on opposite rounds

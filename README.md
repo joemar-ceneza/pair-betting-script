@@ -2,8 +2,25 @@
 
 ## What This Does
 Logs into LEO, collects each player's basic information and their Live Casino
-bet list for one day, then flags account pairs that bet opposite sides of the
-same rounds (one WON / one LOST, settled within seconds on the same table).
+bet list for one day, then compares every pair of accounts round by round to
+find pair betting (two accounts betting opposite sides of the same rounds).
+
+## How Detection Works
+1. Each account's bets in the same round are added together
+   (2 x 100k in one round = one 200k round).
+2. Every round both accounts played on the same table is classified:
+   - OPPOSITE — one won, the other lost
+   - TIE      — both pushed (a tie with one on Banker, one on Player)
+   - CONFLICT — both won, both lost, or anything else
+3. Supporting signals: similar stakes, bets placed within seconds,
+   combined net near zero (hedged), shared IP.
+4. Risk:
+   - HIGH   — 2+ opposite rounds, 80%+ of shared rounds opposite or tie, and 2+ signals
+   - MEDIUM — consistent as above, with 0-1 signals
+   - LOW    — shared IP, or opposite rounds that are not consistent enough
+   - NONE   — shared rounds but nothing suspicious (CSV only)
+
+All thresholds are in the PAIR-BETTING DETECTION section of config.py.
 
 ## Requirements
 - Python 3.11
@@ -25,8 +42,11 @@ same rounds (one WON / one LOST, settled within seconds on the same table).
 Press Enter at the date prompt to check yesterday, or type MM/DD/YYYY.
 Run after 12:00 PM Manila time so the full LEO day (GMT-4) has closed.
 
-## Terminal Colors
-In a terminal, log lines are colored: gray timestamp, blue INFO, green SUCCESS
+## Terminal Output
+Every line is logged separately with its own timestamp, and sections are
+framed with "=" lines.
+
+In a terminal, lines are colored: gray timestamp, blue INFO, green SUCCESS
 (INFO lines starting with Saved / Successfully / Logged in / Browser closed cleanly),
 yellow WARNING, red ERROR. The log file is always plain text.
 
@@ -37,15 +57,20 @@ To turn them off manually:
 
 ## Data Folder Layout
 data/
-├── output/                         CSV reports
-├── logs/<Month>/<MM-DD-YYYY>/      automation.txt
-└── screenshots/<Month>/<MM-DD-YYYY>/ screenshot-001.png, screenshot-002.png, ...
+├── output/<Month>/<MM-DD-YYYY>/       CSV reports, by REPORT date (the day checked)
+├── logs/<Month>/<MM-DD-YYYY>/         automation.txt, by RUN date
+└── screenshots/<Month>/<MM-DD-YYYY>/  screenshot-001.png, ..., by RUN date
 
-## Output (data/output/)
+Example: checking 10/14 on the morning of 10/15 gives
+data/output/October/10-14-2026/ and data/logs/October/10-15-2026/
+
+## Output Files
 - player_info_YYYYMMDD.csv  — basic information per player
 - bets_YYYYMMDD.csv         — every Live Casino bet
-- pair_betting_YYYYMMDD.csv — flagged pairs, ranked HIGH / MEDIUM / LOW
-- pair_rounds_YYYYMMDD.csv  — matched rounds proving each flagged pair
+- pair_betting_YYYYMMDD.csv — every pair with shared rounds or a shared IP,
+                              ranked HIGH / MEDIUM / LOW / NONE, with signals
+- pair_rounds_YYYYMMDD.csv  — every shared round per pair: round type, stakes,
+                              results, seconds between bets, reference numbers
 
 ## Building the Exe (Nuitka)
 1. Bump APP_VERSION in config.py for every release.
@@ -81,18 +106,15 @@ Playwright silently falls back to the dev machine's browsers, so test without th
 - Single-file exes are sometimes flagged by antivirus. Never compress with UPX.
   Code-signing the exe is the real fix.
 
-## Tuning
-Detection thresholds are in the PAIR-BETTING DETECTION section of config.py.
-
 ## Project Structure
 pair_betting_checker/
 ├── main.py              # Orchestrator — numbered steps only
 ├── config.py            # Settings, paths, version, detection thresholds
 ├── scraper.py           # Login → basic info → bet list
-├── analysis.py          # Pair-betting detection
+├── analysis.py          # Round-by-round pair-betting detection
 ├── file_handler.py      # CSV outputs
 ├── utils.py             # Generic helpers (retry, frames, dated folders)
-├── log_utils.py         # Log layout + terminal color formatter
+├── log_utils.py         # Line-by-line log helpers + terminal colors
 ├── build_nuitka.py      # Builds the single-file exe
 ├── requirements.txt
 └── requirements-dev.txt # Build-only (Nuitka)
