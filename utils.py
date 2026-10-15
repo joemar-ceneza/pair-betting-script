@@ -33,7 +33,7 @@ def retry(func: Callable, retries: int = 3, delay: int = 2) -> Any:
             return func()
         except Exception as error:
             last_error = error
-            logging.warning("  Attempt %d of %d failed: %s", attempt, retries, error)
+            logging.warning("Attempt %d of %d failed: %s", attempt, retries, error)
             if attempt < retries:
                 time.sleep(delay)
     raise RuntimeError(f"All {retries} attempts failed: {last_error}") from last_error

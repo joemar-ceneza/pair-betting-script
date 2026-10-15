@@ -3,6 +3,7 @@ import sys
 import logging
 
 WIDTH = 70
+LABEL_WIDTH = 20
 
 _RESET = "\033[0m"
 _GRAY = "\033[90m"
@@ -16,26 +17,27 @@ _ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 
 
 # ======================================================
-# TEXT LAYOUT HELPERS
+# LINE-BY-LINE LOG HELPERS
 # ======================================================
-def rule(char: str = "=") -> str:
-    """Return a full-width ASCII separator line."""
-    return char * WIDTH
+def rule() -> str:
+    """Return a full-width '=' separator line."""
+    return "=" * WIDTH
 
 
-def section(title: str) -> str:
-    """Return a major section header framed with '=' rules."""
-    return f"{rule('=')}\n{title}\n{rule('=')}"
-
-
-def subsection(title: str) -> str:
-    """Return a sub-step header framed with '-' rules."""
-    return f"{rule('-')}\n{title}\n{rule('-')}"
-
-
-def field(label: str, value: object, width: int = 18) -> str:
+def field(label: str, value: object, width: int = LABEL_WIDTH) -> str:
     """Return an aligned 'label : value' line."""
-    return f"  {label:<{width}}: {value}"
+    return f"{label:<{width}}: {value}"
+
+
+def log_lines(lines: list[str]) -> None:
+    """Log each line separately so every line gets its own timestamp prefix."""
+    for line in lines:
+        logging.info("%s", line)
+
+
+def log_section(title: str) -> None:
+    """Log a title framed by '=' rules, one line at a time."""
+    log_lines([rule(), title, rule()])
 
 
 # ======================================================

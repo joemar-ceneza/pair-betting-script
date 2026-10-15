@@ -66,7 +66,8 @@ EVIDENCE_COLUMNS = [
 
 
 def save_outputs(scrape_result: dict, analysis_result: dict, report_date: date) -> list[str]:
-    """Write all four CSV reports to data/output/ and return their paths."""
+    """Write all four CSV reports to data/output/<Month>/<MM-DD-YYYY>/ and return their paths."""
+    folder = utils.build_dated_folder(config.OUTPUT_DIR, report_date)
     stamp = report_date.strftime("%Y%m%d")
     reports = [
         (scrape_result["players"], PLAYER_COLUMNS, f"player_info_{stamp}.csv"),
@@ -76,8 +77,8 @@ def save_outputs(scrape_result: dict, analysis_result: dict, report_date: date) 
     ]
     paths = []
     for rows, columns, filename in reports:
-        path = os.path.join(config.OUTPUT_DIR, filename)
+        path = os.path.join(folder, filename)
         utils.write_csv(rows, columns, path)
-        logging.info("  Saved: %s (%d rows)", filename, len(rows))
+        logging.info("Saved: %s (%d rows)", filename, len(rows))
         paths.append(path)
     return paths

@@ -63,7 +63,7 @@ def _load_usernames(path: str) -> list[str]:
         lines = [line.strip() for line in f if line.strip()]
     valid = [name for name in lines if re.match(config.USERNAME_PATTERN, name)]
     if len(valid) != len(lines):
-        logging.warning("  Skipped %d invalid username line(s).", len(lines) - len(valid))
+        logging.warning("Skipped %d invalid username line(s).", len(lines) - len(valid))
     return list(dict.fromkeys(valid))
 
 
@@ -88,7 +88,7 @@ def _collect_report_date() -> date:
         try:
             return datetime.strptime(text, config.INPUT_DATE_FORMAT).date()
         except ValueError:
-            logging.warning("  Invalid date '%s' — use MM/DD/YYYY.", text)
+            logging.warning("Invalid date '%s' — use MM/DD/YYYY.", text)
 
 
 # ======================================================
@@ -96,31 +96,32 @@ def _collect_report_date() -> date:
 # ======================================================
 def _log_step(number: int, title: str) -> None:
     """Log a framed step header."""
-    logging.info("\n%s", log_utils.section(f"STEP {number} — {title}"))
+    log_utils.log_section(f"STEP {number} — {title}")
 
 
 def _log_banner(report_date: date, player_count: int, log_path: str) -> None:
     """Log the run settings once the date is known."""
-    lines = [
-        log_utils.section(f"PAIR BETTING CHECK v{config.APP_VERSION}"),
-        log_utils.field("Report date", report_date.strftime(config.INPUT_DATE_FORMAT)),
-        log_utils.field("Time window", f"{config.DAY_START} - {config.DAY_END}"),
-        log_utils.field("Product", "Live Casino & Casino Games"),
-        log_utils.field("Players", player_count),
-        log_utils.field("Headless", config.HEADLESS),
-        log_utils.field("Settle tolerance", f"{config.SETTLE_TOLERANCE_SECONDS}s"),
-        log_utils.field("Min opposite", config.MIN_OPPOSITE_ROUNDS),
-        log_utils.field("Min opposite rate", f"{config.MIN_OPPOSITE_RATE:.0%}"),
-        log_utils.field("Log file", log_path),
-    ]
-    logging.info("\n%s", "\n".join(lines))
+    log_utils.log_section(f"PAIR BETTING CHECK v{config.APP_VERSION}")
+    log_utils.log_lines(
+        [
+            log_utils.field("Report date", report_date.strftime(config.INPUT_DATE_FORMAT)),
+            log_utils.field("Time window", f"{config.DAY_START} - {config.DAY_END}"),
+            log_utils.field("Product", "Live Casino & Casino Games"),
+            log_utils.field("Players", player_count),
+            log_utils.field("Headless", config.HEADLESS),
+            log_utils.field("Settle tolerance", f"{config.SETTLE_TOLERANCE_SECONDS}s"),
+            log_utils.field("Min opposite", config.MIN_OPPOSITE_ROUNDS),
+            log_utils.field("Min opposite rate", f"{config.MIN_OPPOSITE_RATE:.0%}"),
+            log_utils.field("Output folder", utils.build_dated_folder(config.OUTPUT_DIR, report_date)),
+            log_utils.field("Log file", log_path),
+        ]
+    )
 
 
 def _log_summary(scrape_result: dict, analysis_result: dict, output_files: list[str], elapsed: float) -> None:
     """Log the final RUN SUMMARY block."""
     risk_counts = Counter(pair["risk"] for pair in analysis_result["pairs"])
     lines = [
-        log_utils.section("RUN SUMMARY"),
         log_utils.field("Players OK", len(scrape_result["players"])),
         log_utils.field("Players failed", len(scrape_result["failures"])),
         log_utils.field("Bets collected", len(scrape_result["bets"])),
@@ -129,13 +130,11 @@ def _log_summary(scrape_result: dict, analysis_result: dict, output_files: list[
         log_utils.field("Pairs LOW", risk_counts["LOW"]),
         log_utils.field("Execution time", f"{elapsed:.1f}s"),
     ]
-    if scrape_result["failures"]:
-        lines.append("  Failure breakdown:")
-        for reason, count in Counter(reason for _, reason in scrape_result["failures"]).most_common():
-            lines.append(f"    {count:>3} x  {reason}")
-    lines.append("  Output files:")
-    lines.extend(f"    {os.path.basename(path)}" for path in output_files)
-    logging.info("\n%s", "\n".join(lines))
+    for reason, count in Counter(reason for _, reason in scrape_result["failures"]).most_common():
+        lines.append(log_utils.field(f"Failed x{count}", reason))
+    lines.extend(log_utils.field("Output file", os.path.basename(path)) for path in output_files)
+    log_utils.log_section("RUN SUMMARY")
+    log_utils.log_lines(lines)
 
 
 # ======================================================
@@ -153,12 +152,12 @@ def main() -> None:
     if len(usernames) < 2:
         logging.warning("Need at least 2 usernames to compare. Exiting.")
         return
-    logging.info(log_utils.field("Usernames", len(usernames)))
+    logging.info("%s", log_utils.field("Usernames", len(usernames)))
 
     # Step 2: Collect credentials
     _log_step(2, "Collecting credentials")
     leo_username, leo_password = _collect_credentials()
-    logging.info("  Logging in as: %s with password: ***", leo_username)
+    logging.info("Logging in as: %s with password: ***", leo_username)
 
     # Step 3: Collect report date
     _log_step(3, "Collecting report date")

@@ -56,7 +56,7 @@ def _dismiss_login_warning(leo_page: Page) -> None:
     except PlaywrightTimeoutError:
         return
     leo_page.click("#continue")
-    logging.info("  Login warning popup dismissed.")
+    logging.info("Login warning popup dismissed.")
 
 
 def _login(leo_page: Page, username: str, password: str) -> None:
@@ -68,13 +68,13 @@ def _login(leo_page: Page, username: str, password: str) -> None:
     leo_page.wait_for_load_state("load")
     _dismiss_login_warning(leo_page)
     utils.get_frame(leo_page, "menu", config.FRAME_TIMEOUT)
-    logging.info("  Logged in to LEO.")
+    logging.info("Logged in to LEO.")
 
 
 def _refresh_if_due(leo_page: Page, position: int) -> None:
     """Reload the LEO page every N players to free browser memory."""
     if position > 1 and (position - 1) % config.LEO_REFRESH_INTERVAL == 0:
-        logging.info("  Refreshing LEO page to clear browser memory...")
+        logging.info("Refreshing LEO page to clear browser memory...")
         leo_page.reload()
         leo_page.wait_for_load_state("load")
         utils.get_frame(leo_page, "menu", config.FRAME_TIMEOUT)
@@ -221,9 +221,9 @@ def _parse_bets(raw_rows: list[dict], username: str) -> list[dict]:
             bets.append(_parse_bet(raw, username))
         except (IndexError, ValueError) as error:
             skipped += 1
-            logging.debug("  Unparsed bet row: %s", error)
+            logging.debug("Unparsed bet row: %s", error)
     if skipped:
-        logging.warning("  %d bet row(s) could not be parsed.", skipped)
+        logging.warning("%d bet row(s) could not be parsed.", skipped)
     return bets
 
 
@@ -239,13 +239,13 @@ def _process_player(leo_page: Page, betlist_page: Page, username: str, report_da
     return info, _parse_bets(raw_rows, username)
 
 
-def _build_player_report(info: dict, bets: list[dict]) -> str:
-    """Build the aligned info + bet summary block for one player."""
+def _build_player_report(info: dict, bets: list[dict]) -> list[str]:
+    """Build the aligned info + bet summary lines for one player."""
     lines = [log_utils.field(label, info[key]) for key, label in _INFO_LABELS]
     lines.append(log_utils.field("Bets", len(bets)))
     lines.append(log_utils.field("Turnover", f"{sum(b['turnover'] for b in bets):,.2f}"))
     lines.append(log_utils.field("Win/Loss", f"{sum(b['winlost'] for b in bets):+,.2f}"))
-    return "\n".join(lines)
+    return lines
 
 
 def _save_error_screenshot(page: Page, label: str) -> None:
@@ -254,17 +254,17 @@ def _save_error_screenshot(page: Page, label: str) -> None:
         folder = utils.build_dated_folder(config.SCREENSHOT_ROOT, date.today())
         path = utils.next_numbered_path(folder, config.SCREENSHOT_PREFIX, ".png")
         page.screenshot(path=path)
-        logging.info("  Screenshot for %s: %s", label, path)
+        logging.info("Screenshot for %s: %s", label, path)
     except Exception as error:
-        logging.warning("  Could not save screenshot for %s: %s", label, error)
+        logging.warning("Could not save screenshot for %s: %s", label, error)
 
 
 def _handle_player(
     pages: tuple[Page, Page], username: str, report_date: date, position: str
 ) -> tuple[Optional[dict], list[dict], Optional[str]]:
-    """Process one player with retries and log their block inline."""
+    """Process one player with retries and log their lines under their header."""
     leo_page, betlist_page = pages
-    logging.info("\n%s", log_utils.subsection(f"[{position}] {username}"))
+    log_utils.log_section(f"[{position}] {username}")
     started = time.monotonic()
     try:
         info, bets = utils.retry(
@@ -273,11 +273,11 @@ def _handle_player(
             delay=config.RETRY_DELAY,
         )
     except Exception as error:
-        logging.error("  Failed: %s", error)
+        logging.error("Failed: %s", error)
         _save_error_screenshot(leo_page, username)
         logging.info("[%s] %s — ERROR (%.1fs)", position, username, time.monotonic() - started)
         return None, [], str(error)
-    logging.info("\n%s", _build_player_report(info, bets))
+    log_utils.log_lines(_build_player_report(info, bets))
     logging.info("[%s] %s — done, %d bets (%.1fs)", position, username, len(bets), time.monotonic() - started)
     return info, bets, None
 
@@ -312,5 +312,5 @@ def run_scraper(usernames: list[str], leo_username: str, leo_password: str, repo
                 bets.extend(player_bets)
         finally:
             browser.close()
-            logging.info("  Browser closed cleanly.")
+            logging.info("Browser closed cleanly.")
     return {"players": players, "bets": bets, "failures": failures}
