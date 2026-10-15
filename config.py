@@ -1,20 +1,48 @@
 import os
 import sys
 
-# When running as a PyInstaller exe, resolve paths relative to the exe.
-if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ======================================================
+# APP
+# ======================================================
+APP_NAME = "PairBettingChecker"
+APP_VERSION = "1.0.0"  # BUMP EVERY RELEASE — also used as the exe file/product version
 
 # ======================================================
-# PATHS
+# RUNTIME LOCATION
 # ======================================================
+IS_NUITKA = "__compiled__" in globals()
+IS_PYINSTALLER = getattr(sys, "frozen", False) and not IS_NUITKA
+IS_COMPILED = IS_NUITKA or IS_PYINSTALLER
+
+if IS_NUITKA:
+    # sys.argv[0] is the real exe; __file__ and sys.executable point into the unpack folder
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+    BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
+elif IS_PYINSTALLER:
+    BASE_DIR = os.path.dirname(sys.executable)
+    BUNDLE_DIR = getattr(sys, "_MEIPASS", BASE_DIR)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BUNDLE_DIR = BASE_DIR
+
+# ======================================================
+# PATHS (user files and data/ live BESIDE the exe)
+# ======================================================
+ENV_FILE = os.path.join(BASE_DIR, ".env")
 USERNAMES_FILE = os.path.join(BASE_DIR, "usernames.txt")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-SCREENSHOT_DIR = os.path.join(LOG_DIR, "screenshots")
-LOG_FILE = os.path.join(LOG_DIR, "automation.log")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+OUTPUT_DIR = os.path.join(DATA_DIR, "output")
+LOG_ROOT = os.path.join(DATA_DIR, "logs")
+SCREENSHOT_ROOT = os.path.join(DATA_DIR, "screenshots")
+LOG_FILENAME = "automation.txt"
+SCREENSHOT_PREFIX = "screenshot"
+BUNDLED_BROWSERS_DIRNAME = "ms-playwright"
+
+# ======================================================
+# LOGGING
+# ======================================================
+LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+SUCCESS_PREFIXES = ("Saved", "Successfully", "Logged in", "Browser closed cleanly")
 
 # ======================================================
 # LEO SITE

@@ -1,9 +1,19 @@
+# Secrets and user input
 .env
+usernames.txt
+
+# Runtime data (logs, screenshots, output)
+data/
+
+# Python
 venv/
-logs/
-output/
 __pycache__/
 *.pyc
-usernames.txt
+
+# Build output
 build/
 dist/
+*.build/
+*.dist/
+*.onefile-build/
+ms-playwright-stage/
