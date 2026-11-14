@@ -60,6 +60,20 @@ python main.py
 Press Enter at the date prompt to check yesterday, or type `MM/DD/YYYY`.
 Run after 12:00 PM Manila time so the full LEO day (GMT-4) has closed.
 
+Future dates are rejected. A date more than 30 days back (`MAX_REPORT_DATE_AGE_DAYS`)
+asks `Is that the right date? [y/N]` — this catches year typos like `2025` for `2026`.
+
+## Session Recovery
+If the network drops or the LEO session expires, every remaining player would fail.
+To prevent that:
+1. After 2 players fail in a row (`MAX_CONSECUTIVE_FAILURES`), the script logs in to LEO again.
+2. If logging in again fails 3 times, 30s apart (`RELOGIN_RETRY_DELAY`), the scrape stops,
+   the remaining players are listed as `Not checked`, and the results so far are saved.
+   The summary ends with `Run stopped early ... Results are PARTIAL` — re-run that date.
+3. Players that failed get one more try at the end of the run (`RETRYING N FAILED PLAYER(S)`).
+
+The RUN SUMMARY shows `Recovered on retry` and `LEO re-logins`.
+
 ## Terminal Output
 Every line is logged separately with its own timestamp, and sections are
 framed with `=` lines.

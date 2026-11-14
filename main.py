@@ -79,8 +79,8 @@ def _collect_credentials() -> tuple[str, str]:
     return username, password
 
 
-def _collect_report_date() -> date:
-    """Ask for the report date (MM/DD/YYYY). Pressing Enter uses yesterday."""
+def _ask_report_date() -> date:
+    """Ask for the report date (MM/DD/YYYY) until it parses. Pressing Enter uses yesterday."""
     yesterday = date.today() - timedelta(days=1)
     default_text = yesterday.strftime(config.INPUT_DATE_FORMAT)
     while True:
@@ -91,6 +91,27 @@ def _collect_report_date() -> date:
             return datetime.strptime(text, config.INPUT_DATE_FORMAT).date()
         except ValueError:
             logging.warning("Invalid date '%s' — use MM/DD/YYYY.", text)
+
+
+def _is_report_date_accepted(report_date: date) -> bool:
+    """Reject future dates; ask for confirmation when the date is unusually old (e.g. a year typo)."""
+    date_text = report_date.strftime(config.INPUT_DATE_FORMAT)
+    age_days = (date.today() - report_date).days
+    if age_days < 0:
+        logging.warning("Report date %s is in the future — enter a past date.", date_text)
+        return False
+    if age_days <= config.MAX_REPORT_DATE_AGE_DAYS:
+        return True
+    logging.warning("Report date %s is %d days ago.", date_text, age_days)
+    return input("Is that the right date? [y/N]: ").strip().lower() == "y"
+
+
+def _collect_report_date() -> date:
+    """Ask for the report date until a valid, confirmed one is entered."""
+    while True:
+        report_date = _ask_report_date()
+        if _is_report_date_accepted(report_date):
+            return report_date
 
 
 def _warn_if_no_bets(scrape_result: dict) -> None:
@@ -135,6 +156,8 @@ def _log_summary(scrape_result: dict, analysis_result: dict, output_files: list[
     lines = [
         log_utils.field("Players OK", len(scrape_result["players"])),
         log_utils.field("Players failed", len(scrape_result["failures"])),
+        log_utils.field("Recovered on retry", scrape_result["recovered"]),
+        log_utils.field("LEO re-logins", scrape_result["relogins"]),
         log_utils.field("Bets collected", len(scrape_result["bets"])),
         log_utils.field("Pairs HIGH", risk_counts["HIGH"]),
         log_utils.field("Pairs MEDIUM", risk_counts["MEDIUM"]),
@@ -147,6 +170,8 @@ def _log_summary(scrape_result: dict, analysis_result: dict, output_files: list[
     lines.extend(log_utils.field("Output file", os.path.basename(path)) for path in output_files)
     log_utils.log_section("RUN SUMMARY")
     log_utils.log_lines(lines)
+    if scrape_result["stopped"]:
+        logging.error("Run stopped early — LEO was unreachable. Results are PARTIAL; re-run this date.")
 
 
 # ======================================================

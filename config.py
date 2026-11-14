@@ -68,6 +68,13 @@ RETRY_DELAY = 2
 # This is a throttle, not a replacement for element waits. Raise to 5 if errors continue.
 STEP_DELAY_SECONDS = 2
 
+# Session recovery: after this many players fail IN A ROW, log in to LEO again
+# (a dropped network or expired session otherwise fails every remaining player).
+# If logging in again fails RETRY_ATTEMPTS times, RELOGIN_RETRY_DELAY seconds apart,
+# the run stops and saves what it has. Failed players get one more try at the end.
+MAX_CONSECUTIVE_FAILURES = 2
+RELOGIN_RETRY_DELAY = 30
+
 # ======================================================
 # DATES
 # ======================================================
@@ -75,6 +82,8 @@ INPUT_DATE_FORMAT = "%m/%d/%Y"
 BET_TIME_FORMAT = "%m/%d/%Y %I:%M:%S %p"
 DAY_START = "00:00"
 DAY_END = "23:59"
+# Future report dates are rejected; dates older than this ask for confirmation (catches year typos)
+MAX_REPORT_DATE_AGE_DAYS = 30
 
 # ======================================================
 # PAIR-BETTING DETECTION

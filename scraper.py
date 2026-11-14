@@ -12,6 +12,7 @@ import utils
 
 _BET_ROWS_SELECTOR = "table.MgmtTableBorder > tbody > tr"
 _STATEMENT_ROWS_SELECTOR = "#tblExchange > tbody > tr"
+_NOT_CHECKED_REASON = "Not checked — run stopped after LEO re-login failed"
 
 # Reads every bet row in one browser call; rows without 8 cells are skipped.
 _EXTRACT_ROWS_JS = """
@@ -105,6 +106,31 @@ def _login(leo_page: Page, username: str, password: str) -> None:
     _dismiss_login_warning(leo_page)
     utils.get_frame(leo_page, "menu", config.FRAME_TIMEOUT)
     logging.info("Logged in to LEO.")
+
+
+def _first_login(leo_page: Page, credentials: tuple[str, str]) -> None:
+    """Log in at the start of the run; screenshot and re-raise if it fails."""
+    try:
+        _login(leo_page, *credentials)
+    except Exception:
+        _save_error_screenshot(leo_page, "login")
+        raise
+
+
+def _relogin(leo_page: Page, credentials: tuple[str, str]) -> bool:
+    """Log in to LEO again after repeated failures. Returns False if LEO stays unreachable."""
+    logging.warning("%d players failed in a row — logging in to LEO again.", config.MAX_CONSECUTIVE_FAILURES)
+    try:
+        utils.retry(
+            lambda: _login(leo_page, *credentials),
+            retries=config.RETRY_ATTEMPTS,
+            delay=config.RELOGIN_RETRY_DELAY,
+        )
+        return True
+    except Exception as error:
+        logging.error("Re-login to LEO failed: %s", error)
+        _save_error_screenshot(leo_page, "re-login")
+        return False
 
 
 def _refresh_if_due(leo_page: Page, position: int) -> None:
@@ -382,35 +408,89 @@ def _handle_player(
 
 
 # ======================================================
+# BATCH PROCESSING (session recovery + retry pass)
+# ======================================================
+def _new_batch() -> dict:
+    """Empty result for one pass over a list of players."""
+    return {"players": [], "bets": [], "failures": [], "relogins": 0, "stopped": False}
+
+
+def _record_player(batch: dict, username: str, info: Optional[dict], bets: list[dict], error: Optional[str]) -> None:
+    """Add one player's outcome to the batch result."""
+    if error:
+        batch["failures"].append((username, error))
+        return
+    batch["players"].append(info)
+    batch["bets"].extend(bets)
+
+
+def _stop_batch(batch: dict, remaining: list[str]) -> None:
+    """Mark the batch as stopped and record every unchecked player as failed."""
+    batch["stopped"] = True
+    batch["failures"].extend((username, _NOT_CHECKED_REASON) for username in remaining)
+    logging.error("Stopping the scrape: LEO is unreachable. %d player(s) not checked.", len(remaining))
+
+
+def _scrape_batch(
+    pages: tuple[Page, Page], usernames: list[str], report_date: date, credentials: tuple[str, str], label: str
+) -> dict:
+    """Process players in order; log in again after MAX_CONSECUTIVE_FAILURES failures in a row."""
+    batch, streak = _new_batch(), 0
+    for index, username in enumerate(usernames, start=1):
+        _refresh_if_due(pages[0], index)
+        position = f"{label}{index}/{len(usernames)}"
+        info, player_bets, error = _handle_player(pages, username, report_date, position)
+        _record_player(batch, username, info, player_bets, error)
+        streak = streak + 1 if error else 0
+        if streak < config.MAX_CONSECUTIVE_FAILURES:
+            continue
+        streak = 0
+        batch["relogins"] += 1
+        if not _relogin(pages[0], credentials):
+            _stop_batch(batch, usernames[index:])
+            break
+    return batch
+
+
+def _retry_failed_players(
+    pages: tuple[Page, Page], first: dict, report_date: date, credentials: tuple[str, str]
+) -> dict:
+    """Give every failed player one more try after the main pass, and merge both passes."""
+    retry_names = [username for username, _ in first["failures"]]
+    if first["stopped"] or not retry_names:
+        return {**first, "recovered": 0}
+    log_utils.log_section(f"RETRYING {len(retry_names)} FAILED PLAYER(S)")
+    second = _scrape_batch(pages, retry_names, report_date, credentials, "retry ")
+    logging.info("Retry pass: %d of %d player(s) recovered.", len(second["players"]), len(retry_names))
+    return {
+        "players": first["players"] + second["players"],
+        "bets": first["bets"] + second["bets"],
+        "failures": second["failures"],
+        "relogins": first["relogins"] + second["relogins"],
+        "stopped": second["stopped"],
+        "recovered": len(second["players"]),
+    }
+
+
+# ======================================================
 # PUBLIC ENTRY POINT
 # ======================================================
 def run_scraper(usernames: list[str], leo_username: str, leo_password: str, report_date: date) -> dict:
     """
-    Log into LEO once, then for each player collect basic info, the Live Casino
-    win/loss and turnover from the daily statement, and the bet list for report_date.
-    Returns players, bets and failures.
+    Log into LEO, then for each player collect basic info, the Live Casino win/loss
+    and turnover from the daily statement, and the bet list for report_date.
+    Logs in again when the session drops, and retries failed players once at the end.
+    Returns players, bets, failures, relogins, recovered and stopped.
     """
-    players, bets, failures = [], [], []
+    credentials = (leo_username, leo_password)
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=config.HEADLESS)
         try:
             context = browser.new_context()
-            leo_page, betlist_page = context.new_page(), context.new_page()
-            try:
-                _login(leo_page, leo_username, leo_password)
-            except Exception:
-                _save_error_screenshot(leo_page, "login")
-                raise
-            _pause(leo_page)
-            for index, username in enumerate(usernames, start=1):
-                _refresh_if_due(leo_page, index)
-                position = f"{index}/{len(usernames)}"
-                info, player_bets, error = _handle_player((leo_page, betlist_page), username, report_date, position)
-                if error:
-                    failures.append((username, error))
-                    continue
-                players.append(info)
-                bets.extend(player_bets)
+            pages = (context.new_page(), context.new_page())
+            _first_login(pages[0], credentials)
+            _pause(pages[0])
+            first = _scrape_batch(pages, usernames, report_date, credentials, "")
+            return _retry_failed_players(pages, first, report_date, credentials)
         finally:
             _close_browser(browser)
-    return {"players": players, "bets": bets, "failures": failures}
