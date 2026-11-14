@@ -79,14 +79,21 @@ def _collect_credentials() -> tuple[str, str]:
     return username, password
 
 
+def _latest_closed_leo_day() -> date:
+    """The newest LEO day (GMT-4) that has fully closed: yesterday after LEO_DAY_CLOSE_HOUR, else the day before."""
+    now = datetime.now()
+    days_back = 1 if now.hour >= config.LEO_DAY_CLOSE_HOUR else 2
+    return now.date() - timedelta(days=days_back)
+
+
 def _ask_report_date() -> date:
-    """Ask for the report date (MM/DD/YYYY) until it parses. Pressing Enter uses yesterday."""
-    yesterday = date.today() - timedelta(days=1)
-    default_text = yesterday.strftime(config.INPUT_DATE_FORMAT)
+    """Ask for the report date (MM/DD/YYYY) until it parses. Pressing Enter uses the latest closed LEO day."""
+    default_date = _latest_closed_leo_day()
+    default_text = default_date.strftime(config.INPUT_DATE_FORMAT)
     while True:
         text = input(f"Report date (MM/DD/YYYY) [Enter = {default_text}]: ").strip()
         if not text:
-            return yesterday
+            return default_date
         try:
             return datetime.strptime(text, config.INPUT_DATE_FORMAT).date()
         except ValueError:
@@ -94,12 +101,15 @@ def _ask_report_date() -> date:
 
 
 def _is_report_date_accepted(report_date: date) -> bool:
-    """Reject future dates; ask for confirmation when the date is unusually old (e.g. a year typo)."""
+    """Reject future dates; confirm a LEO day that is still open, or one that is unusually old (year typo)."""
     date_text = report_date.strftime(config.INPUT_DATE_FORMAT)
     age_days = (date.today() - report_date).days
     if age_days < 0:
         logging.warning("Report date %s is in the future — enter a past date.", date_text)
         return False
+    if report_date > _latest_closed_leo_day():
+        logging.warning("LEO day %s has not closed yet — results will be incomplete.", date_text)
+        return input("Check it anyway? [y/N]: ").strip().lower() == "y"
     if age_days <= config.MAX_REPORT_DATE_AGE_DAYS:
         return True
     logging.warning("Report date %s is %d days ago.", date_text, age_days)
