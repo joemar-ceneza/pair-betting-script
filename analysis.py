@@ -101,10 +101,11 @@ def _collect_user_ips(players: list[dict], bets: list[dict]) -> dict[str, set[st
 # ROUND MATCHING
 # ======================================================
 def _find_partner(round_: dict, index: dict, used: set[str]) -> Optional[dict]:
-    """Find the other account's unused round on the same table within the tolerance."""
+    """Find the other account's closest unused round on the same table within the tolerance."""
     base_second = int(round_["settle_time"].timestamp())
     tolerance = config.SETTLE_TOLERANCE_SECONDS
-    for offset in range(-tolerance, tolerance + 1):
+    # Closest second first (0, -1, +1, -2, +2) so two rounds settling close together never get swapped
+    for offset in sorted(range(-tolerance, tolerance + 1), key=abs):
         for candidate in index.get((round_["game"], base_second + offset), []):
             if candidate["ref_nos"][0] not in used:
                 return candidate
@@ -159,8 +160,20 @@ def _rate(part: int, whole: int) -> float:
     return part / whole if whole else 0.0
 
 
-def _measure_hedge(opposite: list[tuple]) -> tuple[float, float, Optional[float]]:
-    """Return (combined stake, combined net, |net| as % of stake) for opposite rounds."""
+def _is_same_currency(currencies: tuple[str, str]) -> bool:
+    """True when both accounts have the same known currency, so their amounts can be added."""
+    return currencies[0] == currencies[1] and currencies[0] != "-"
+
+
+def _measure_hedge(
+    opposite: list[tuple], same_currency: bool
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """
+    Return (combined stake, combined net, |net| as % of stake) for opposite rounds.
+    All None for mixed currencies: adding VND to THB gives a meaningless number.
+    """
+    if not same_currency:
+        return None, None, None
     turnover = sum(a["stake"] + b["stake"] for a, b in opposite)
     net = sum(a["winlost"] + b["winlost"] for a, b in opposite)
     net_pct = abs(net) / turnover * 100 if turnover else None
@@ -242,11 +255,11 @@ def _summarize_pair(
     """Build the summary record for one pair of users."""
     groups = _split_by_type(matches)
     opposite = groups["OPPOSITE"]
-    same_currency = currencies[0] == currencies[1]
+    same_currency = _is_same_currency(currencies)
     similar = [m for m in opposite if _is_similar_stake(*m)] if same_currency else []
     close = [m for m in matches if _bet_gap_seconds(*m) <= config.BET_TIME_WINDOW_SECONDS]
     consistency = _rate(len(opposite) + len(groups["TIE"]), len(matches))
-    turnover, net, net_pct = _measure_hedge(opposite)
+    turnover, net, net_pct = _measure_hedge(opposite, same_currency)
     flow_rate, winner, loser, flow_amount = _measure_flow(opposite, user_a, user_b)
     is_consistent = _is_consistent(len(opposite), consistency)
     is_one_way = _is_one_way(len(opposite), flow_rate)
@@ -258,7 +271,7 @@ def _summarize_pair(
         "pattern": _pick_pattern(is_consistent, is_one_way),
         "user_a": user_a,
         "user_b": user_b,
-        "currencies": currencies[0] if same_currency else f"{currencies[0]}/{currencies[1]}",
+        "currencies": currencies[0] if currencies[0] == currencies[1] else f"{currencies[0]}/{currencies[1]}",
         "shared_rounds": len(matches),
         "opposite_rounds": len(opposite),
         "tie_rounds": len(groups["TIE"]),
@@ -266,8 +279,8 @@ def _summarize_pair(
         "consistency_pct": round(consistency * 100, 1),
         "similar_stake_rounds": len(similar),
         "close_timing_rounds": len(close),
-        "opposite_turnover": round(turnover, 2),
-        "opposite_net": round(net, 2),
+        "opposite_turnover": round(turnover, 2) if turnover is not None else "-",
+        "opposite_net": round(net, 2) if net is not None else "-",
         "net_pct": round(net_pct, 2) if net_pct is not None else "-",
         "one_way_rate_pct": round(flow_rate * 100, 1),
         "flow_direction": f"{loser} -> {winner}" if is_one_way else "-",
@@ -324,9 +337,21 @@ def _format_flow(summary: dict) -> str:
     return f"{summary['one_way_rate_pct']}% ({summary['flow_direction']}, {summary['flow_amount']:,.2f})"
 
 
+def _format_opposite_net(summary: dict) -> str:
+    """'+12,000.00 (1.5%)', or a note when mixed currencies make the net meaningless."""
+    if summary["opposite_net"] == "-":
+        return "- (mixed currencies)"
+    net_pct = f"{summary['net_pct']}%" if summary["net_pct"] != "-" else "-"
+    return f"{summary['opposite_net']:+,.2f} ({net_pct})"
+
+
+def _format_amount(value: object) -> str:
+    """'1,234.00' for numbers, the value unchanged for '-'."""
+    return f"{value:,.2f}" if isinstance(value, (int, float)) else str(value)
+
+
 def _log_pair_report(summary: dict) -> None:
     """Log one flagged pair: '=' header, then one aligned line per field."""
-    net_pct = f"{summary['net_pct']}%" if summary["net_pct"] != "-" else "-"
     log_utils.log_section(f"{summary['risk']} | {summary['pattern']} | {summary['user_a']} <-> {summary['user_b']}")
     log_utils.log_lines(
         [
@@ -338,8 +363,8 @@ def _log_pair_report(summary: dict) -> None:
             log_utils.field("Consistency", f"{summary['consistency_pct']}%"),
             log_utils.field("Similar stakes", summary["similar_stake_rounds"]),
             log_utils.field("Close timing", summary["close_timing_rounds"]),
-            log_utils.field("Opposite turnover", f"{summary['opposite_turnover']:,.2f}"),
-            log_utils.field("Opposite net", f"{summary['opposite_net']:+,.2f} ({net_pct})"),
+            log_utils.field("Opposite turnover", _format_amount(summary["opposite_turnover"])),
+            log_utils.field("Opposite net", _format_opposite_net(summary)),
             log_utils.field("One-way flow", _format_flow(summary)),
             log_utils.field("Shared IPs", summary["shared_ips"]),
             log_utils.field("Signals", summary["signals"]),

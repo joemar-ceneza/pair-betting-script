@@ -34,6 +34,22 @@ loser's cash balance: a balance at or near zero supports chip dumping.
 
 All thresholds are in the `PAIR-BETTING DETECTION` section of `config.py`.
 
+**Mixed currencies** (e.g. `VND/THB`, or a currency that could not be read, `-`): rounds are
+still matched and classified, but amounts from two currencies can't be added, so
+*similar stakes* and *hedged net* are never counted and `opposite_turnover`, `opposite_net`
+and `net_pct` show `-`. Such a pair can still reach MEDIUM (or HIGH via close timing,
+one-way flow and shared IP).
+
+Rounds are matched to the **closest** settle time on the same table (within
+`SETTLE_TOLERANCE_SECONDS`), so two rounds settling close together are never swapped.
+
+## Tests
+The detection rules have offline tests with made-up bets (no LEO needed):
+```bat
+python -m unittest discover tests
+```
+Run them after changing anything in `analysis.py` or the detection thresholds.
+
 ## Requirements
 - Python 3.11
 - Windows OS
@@ -176,6 +192,7 @@ pair-betting-checker/
 ├── utils.py              # Generic helpers (retry, frames, dated folders)
 ├── log_utils.py          # Line-by-line log helpers + terminal colors
 ├── build_nuitka.py       # Builds the single-file exe
+├── tests/                # Offline tests for the detection rules (unittest)
 ├── requirements.txt      # Runtime dependencies
 ├── requirements-dev.txt  # Build-only (Nuitka)
 ├── pyproject.toml        # Black settings (line length 120)
