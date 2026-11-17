@@ -73,15 +73,14 @@ Run them after changing anything in `analysis.py` or the detection thresholds.
 python main.py
 ```
 
-Press Enter at the date prompt to check the **latest closed LEO day**, or type `MM/DD/YYYY`.
-The LEO day (GMT-4) closes at 12:00 PM Manila time the next day (`LEO_DAY_CLOSE_HOUR`):
+Press Enter at the date prompt to use the default date, or type `MM/DD/YYYY`.
+The default switches at 12:00 PM Manila time (`REPORT_DATE_SWITCH_HOUR`):
 
-| Run on 11/14 at | Enter = |
+| Run on 11/17 at | Enter = |
 |---|---|
-| before 12:00 PM | 11/12 (11/13 is still open in LEO) |
-| 12:00 PM or later | 11/13 |
+| before 12:00 PM (e.g. 8 AM, 11 AM) | 11/16 (yesterday) |
+| 12:00 PM or later | 11/17 (today) |
 
-Typing a day that is still open warns `has not closed yet` and asks `Check it anyway? [y/N]`.
 Future dates are rejected. A date more than 30 days back (`MAX_REPORT_DATE_AGE_DAYS`)
 asks `Is that the right date? [y/N]` — this catches year typos like `2025` for `2026`.
 

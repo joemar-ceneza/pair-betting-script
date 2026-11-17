@@ -84,10 +84,9 @@ DAY_START = "00:00"
 DAY_END = "23:59"
 # Future report dates are rejected; dates older than this ask for confirmation (catches year typos)
 MAX_REPORT_DATE_AGE_DAYS = 30
-# Hour on THIS PC's clock (Manila, GMT+8) when the LEO day (GMT-4) closes: day D closes at
-# 12:00 PM on D+1. The date prompt defaults to the latest closed day:
-# after 12 PM = yesterday, before 12 PM = the day before yesterday.
-LEO_DAY_CLOSE_HOUR = 12
+# Hour on THIS PC's clock (Manila) when the date prompt's default switches to today:
+# from 12:00 PM Enter = today, before 12:00 PM Enter = yesterday.
+REPORT_DATE_SWITCH_HOUR = 12
 
 # ======================================================
 # PAIR-BETTING DETECTION
