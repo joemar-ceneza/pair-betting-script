@@ -55,9 +55,9 @@ USERNAME_PATTERN = r"^[A-Za-z0-9_.@-]+$"
 # ADVANCED SEARCH (MKT) — finds the accounts to check
 # ======================================================
 # Path: top toolbar 'WMA' → WMA toolbar 'Advanced Search (MKT)' → form in the 'icontents' frame.
-# Accounts CREATED from (report date - MKT_CREATED_DAYS_BACK) to the report date are checked,
-# e.g. report date 11/24 → created 11/23 - 11/24 ("yesterday to today").
-MKT_CREATED_DAYS_BACK = 1
+# Accounts CREATED from the report date to (report date + MKT_CREATED_DAYS_AFTER) are checked,
+# never past today: report date 11/23 → created 11/23 - 11/24; report date = today → today only.
+MKT_CREATED_DAYS_AFTER = 1
 MKT_DEPOSIT_STATUS = "1"  # Initial Deposit Status: 1 = Deposited, "0,2,3,4,5,6" = No Deposit, -1 = any
 MKT_SERVICE_PROVIDER = "-1"  # -1 = any provider
 MKT_PROMOTION_STATUS = "-1"  # -1 = any promotion status

@@ -6,6 +6,7 @@ Run from the project folder:  python -m unittest discover tests
 import os
 import sys
 import unittest
+from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -109,11 +110,15 @@ class CleanTests(unittest.TestCase):
 
 
 class CreatedRangeTests(unittest.TestCase):
-    def test_range_is_day_before_report_date_to_report_date(self) -> None:
-        from datetime import date
+    def test_range_is_report_date_to_next_day(self) -> None:
+        today = date(2026, 11, 24)
+        self.assertEqual(account_search._created_range(date(2026, 11, 23), today), ("11/23/2026", "11/24/2026"))
+        month_end = account_search._created_range(date(2026, 11, 30), date(2026, 12, 5))
+        self.assertEqual(month_end, ("11/30/2026", "12/01/2026"))
 
-        self.assertEqual(account_search._created_range(date(2026, 11, 24)), ("11/23/2026", "11/24/2026"))
-        self.assertEqual(account_search._created_range(date(2026, 12, 1)), ("11/30/2026", "12/01/2026"))
+    def test_range_never_goes_past_today(self) -> None:
+        today = date(2026, 11, 24)
+        self.assertEqual(account_search._created_range(today, today), ("11/24/2026", "11/24/2026"))
 
 
 if __name__ == "__main__":

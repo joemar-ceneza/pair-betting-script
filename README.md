@@ -2,7 +2,7 @@
 
 ## What This Does
 Logs into LEO, finds the accounts to check with **Advanced Search (MKT)**
-(deposited accounts created yesterday to today), collects each player's basic
+(deposited accounts created on the report date and the day after), collects each player's basic
 information and their Live Casino bet list for one day, then compares every pair
 of accounts round by round to find pair betting (two accounts betting opposite
 sides of the same rounds). No account list has to be typed in.
@@ -13,7 +13,7 @@ like a person would), fills the form and clicks **Search**:
 
 | Filter | Value | Setting in `config.py` |
 |---|---|---|
-| Created date | report date - 1 day → report date | `MKT_CREATED_DAYS_BACK = 1` |
+| Created date | report date → report date + 1 day (never past today) | `MKT_CREATED_DAYS_AFTER = 1` |
 | Initial deposit status | Deposited | `MKT_DEPOSIT_STATUS = "1"` |
 | Service provider | any | `MKT_SERVICE_PROVIDER = "-1"` |
 | Promotion status | any | `MKT_PROMOTION_STATUS = "-1"` |
@@ -24,8 +24,8 @@ account once per service provider, so repeated account IDs are checked only once
 Every account found is saved to `accounts_YYYYMMDD.csv`. If the search returns the
 full 10,000 rows, a warning says some accounts may be missing.
 
-Example: report date 11/24 checks the bets on 11/24 of every deposited account
-created 11/23 - 11/24.
+Example: report date 11/23 checks the bets on 11/23 of every deposited account
+created 11/23 - 11/24. If the report date is today, only accounts created today are searched.
 
 ## How Detection Works
 1. Each account's bets in the same round are added together

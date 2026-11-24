@@ -126,18 +126,13 @@ def _log_step(number: int, title: str) -> None:
 
 def _log_banner(report_date: date, log_path: str) -> None:
     """Log the run settings once the date is known."""
-    created_from = report_date - timedelta(days=config.MKT_CREATED_DAYS_BACK)
     log_utils.log_section(f"PAIR BETTING CHECK v{config.APP_VERSION}")
     log_utils.log_lines(
         [
             log_utils.field("Report date", report_date.strftime(config.INPUT_DATE_FORMAT)),
             log_utils.field("Time window", f"{config.DAY_START} - {config.DAY_END}"),
             log_utils.field("Product", config.LIVE_CASINO_PRODUCT_NAME),
-            log_utils.field("Accounts from", "Advanced Search (MKT), deposited only"),
-            log_utils.field(
-                "Accounts created",
-                f"{created_from.strftime(config.INPUT_DATE_FORMAT)} - {report_date.strftime(config.INPUT_DATE_FORMAT)}",
-            ),
+            log_utils.field("Accounts from", "Advanced Search (MKT), deposited only (see STEP 3)"),
             log_utils.field("Headless", config.HEADLESS),
             log_utils.field("Settle tolerance", f"{config.SETTLE_TOLERANCE_SECONDS}s"),
             log_utils.field("Min opposite", config.MIN_OPPOSITE_ROUNDS),

@@ -72,10 +72,11 @@ def _expand_section(form_frame: Frame, section: str) -> None:
 # ======================================================
 # FILTERS
 # ======================================================
-def _created_range(report_date: date) -> tuple[str, str]:
-    """('MM/DD/YYYY', 'MM/DD/YYYY') from MKT_CREATED_DAYS_BACK days before the report date to the report date."""
-    created_from = report_date - timedelta(days=config.MKT_CREATED_DAYS_BACK)
-    return created_from.strftime(config.INPUT_DATE_FORMAT), report_date.strftime(config.INPUT_DATE_FORMAT)
+def _created_range(report_date: date, today: date | None = None) -> tuple[str, str]:
+    """('MM/DD/YYYY', 'MM/DD/YYYY') from the report date to MKT_CREATED_DAYS_AFTER days later, capped at today."""
+    today = today or date.today()
+    created_to = min(report_date + timedelta(days=config.MKT_CREATED_DAYS_AFTER), today)
+    return report_date.strftime(config.INPUT_DATE_FORMAT), created_to.strftime(config.INPUT_DATE_FORMAT)
 
 
 def _fill_filters(form_frame: Frame, report_date: date) -> None:
@@ -195,7 +196,7 @@ def _log_search_report(report_date: date, rows: list[list[str]], accounts: list[
 def run_account_search(credentials: tuple[str, str], report_date: date) -> list[dict]:
     """
     Log into LEO, run Advanced Search (MKT) for deposited accounts created from
-    MKT_CREATED_DAYS_BACK days before report_date up to report_date, and return
+    report_date up to MKT_CREATED_DAYS_AFTER days later (never past today), and return
     one record per account (account_id, created_date, currency, deposit_status, promotion_*).
     """
     started = time.monotonic()
