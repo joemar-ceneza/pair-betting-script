@@ -141,9 +141,8 @@ def _stage_browsers(revisions: dict[str, str]) -> None:
 # ======================================================
 # NUITKA
 # ======================================================
-def _build_nuitka_command(playwright_package: str) -> list[str]:
+def _build_nuitka_command() -> list[str]:
     """Assemble the full Nuitka command line."""
-    driver_dir = os.path.join(playwright_package, "driver")
     command = [
         sys.executable,
         "-m",
@@ -163,9 +162,10 @@ def _build_nuitka_command(playwright_package: str) -> list[str]:
         f"--file-description={FILE_DESCRIPTION}",
         f"--product-version={config.APP_VERSION}",
         f"--file-version={config.APP_VERSION}",
-        # Raw dirs keep .exe/.dll files (data dirs would drop them)
+        # Raw dir keeps the browsers' .exe/.dll files (data dirs would drop them).
+        # The Playwright driver (node.exe + package) is bundled by Nuitka's own playwright plugin;
+        # adding it here as well makes Nuitka fail with "conflicts with exe playwright\driver\node.exe".
         f"--include-raw-dir={STAGE_DIR}=ms-playwright",
-        f"--include-raw-dir={driver_dir}=playwright/driver",
     ]
     command += [f"--nofollow-import-to={package}" for package in DEV_ONLY_PACKAGES]
     if ICON_PATH:
@@ -213,7 +213,7 @@ def main() -> None:
     revisions = _read_browser_revisions(playwright_package)
     _stage_browsers(revisions)
 
-    _run_nuitka(_build_nuitka_command(playwright_package))
+    _run_nuitka(_build_nuitka_command())
 
     exe_path = os.path.join(DIST_DIR, EXE_NAME)
     if not os.path.isfile(exe_path):
