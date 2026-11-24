@@ -79,9 +79,10 @@ def _created_range(report_date: date, today: date | None = None) -> tuple[str, s
     return report_date.strftime(config.INPUT_DATE_FORMAT), created_to.strftime(config.INPUT_DATE_FORMAT)
 
 
-def _fill_filters(form_frame: Frame, report_date: date) -> None:
-    """Set the created-date range, deposit status, provider, promotion status and row limit."""
+def _fill_filters(form_frame: Frame, report_date: date, currency: str) -> None:
+    """Set the created-date range, currency, deposit status, provider, promotion status and row limit."""
     form_frame.evaluate(_SET_CREATED_RANGE_JS, list(_created_range(report_date)))
+    form_frame.select_option("select[id='selcei.Currency']", value=currency)
     form_frame.select_option("#selInitdepositstatus", value=config.MKT_DEPOSIT_STATUS)
     form_frame.select_option("select[id='selcpa.ServiceProvider']", value=config.MKT_SERVICE_PROVIDER)
     form_frame.select_option("#promotionStatus", value=config.MKT_PROMOTION_STATUS)
@@ -154,13 +155,13 @@ def _read_results(form_frame: Frame) -> list[list[str]]:
 # ======================================================
 # SEARCH + REPORT
 # ======================================================
-def _search_accounts(leo_page: Page, report_date: date) -> list[list[str]]:
+def _search_accounts(leo_page: Page, report_date: date, currency: str) -> list[list[str]]:
     """Open the MKT form, fill it, search, and return the raw result rows (screenshot on failure)."""
     try:
         form_frame = _open_advanced_search(leo_page)
         for section in _SECTIONS:
             _expand_section(form_frame, section)
-        _fill_filters(form_frame, report_date)
+        _fill_filters(form_frame, report_date, currency)
         _tick_display_columns(form_frame)
         leo_session.pause(leo_page)
         _submit_search(form_frame)
@@ -170,13 +171,16 @@ def _search_accounts(leo_page: Page, report_date: date) -> list[list[str]]:
         raise
 
 
-def _log_search_report(report_date: date, rows: list[list[str]], accounts: list[dict], invalid: int) -> None:
+def _log_search_report(
+    report_date: date, currency: str, rows: list[list[str]], accounts: list[dict], invalid: int
+) -> None:
     """Log the filters used and what came back, then warn if the row limit was reached."""
     created_from, created_to = _created_range(report_date)
     data_rows = max(len(rows) - 1, 0)
     log_utils.log_lines(
         [
             log_utils.field("Created", f"{created_from} - {created_to}"),
+            log_utils.field("Currency", "all" if currency == config.MKT_ALL_CURRENCIES else currency),
             log_utils.field("Deposit status", config.MKT_DEPOSIT_STATUS),
             log_utils.field("Service provider", config.MKT_SERVICE_PROVIDER),
             log_utils.field("Promotion status", config.MKT_PROMOTION_STATUS),
@@ -193,10 +197,11 @@ def _log_search_report(report_date: date, rows: list[list[str]], accounts: list[
 # ======================================================
 # PUBLIC ENTRY POINT
 # ======================================================
-def run_account_search(credentials: tuple[str, str], report_date: date) -> list[dict]:
+def run_account_search(credentials: tuple[str, str], report_date: date, currency: str) -> list[dict]:
     """
-    Log into LEO, run Advanced Search (MKT) for deposited accounts created from
-    report_date up to MKT_CREATED_DAYS_AFTER days later (never past today), and return
+    Log into LEO, run Advanced Search (MKT) for deposited accounts in currency
+    (MKT_ALL_CURRENCIES = any) created from report_date up to MKT_CREATED_DAYS_AFTER
+    days later (never past today), and return
     one record per account (account_id, created_date, currency, deposit_status, promotion_*).
     """
     started = time.monotonic()
@@ -207,13 +212,13 @@ def run_account_search(credentials: tuple[str, str], report_date: date) -> list[
             leo_session.first_login(leo_page, credentials)
             leo_session.pause(leo_page)
             rows = utils.retry(
-                lambda: _search_accounts(leo_page, report_date),
+                lambda: _search_accounts(leo_page, report_date, currency),
                 retries=config.RETRY_ATTEMPTS,
                 delay=config.RETRY_DELAY,
             )
         finally:
             leo_session.close_browser(browser)
     accounts, invalid = _clean_accounts(_parse_result_rows(rows))
-    _log_search_report(report_date, rows, accounts, invalid)
+    _log_search_report(report_date, currency, rows, accounts, invalid)
     logging.info("Advanced Search (MKT) done: %d account(s) (%.1fs)", len(accounts), time.monotonic() - started)
     return accounts

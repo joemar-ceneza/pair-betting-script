@@ -14,6 +14,7 @@ like a person would), fills the form and clicks **Search**:
 | Filter | Value | Setting in `config.py` |
 |---|---|---|
 | Created date | report date → report date + 1 day (never past today) | `MKT_CREATED_DAYS_AFTER = 1` |
+| Currency | asked at the start (Enter = all), or `--currency VND` | `MKT_CURRENCIES`, `MKT_CURRENCY_ALIASES` |
 | Initial deposit status | Deposited | `MKT_DEPOSIT_STATUS = "1"` |
 | Service provider | any | `MKT_SERVICE_PROVIDER = "-1"` |
 | Promotion status | any | `MKT_PROMOTION_STATUS = "-1"` |
@@ -23,7 +24,8 @@ The result table is read straight from the page (no Excel download). Each accoun
 promotion code and status are shown in its player block, in every flagged pair
 (`Promotion A` / `Promotion B`) and in the CSVs; `-` means no promotion. LEO lists an
 account once per service provider, so repeated account IDs are checked only once.
-Every account found is saved to `accounts_YYYYMMDD.csv`. If the search returns the
+Every account found is saved to `accounts_YYYYMMDD.csv` **right after the search**,
+before the long scrape starts, so the list is kept even if the run is stopped. If the search returns the
 full 10,000 rows, a warning says some accounts may be missing.
 
 Example: report date 11/23 checks the bets on 11/23 of every deposited account
@@ -104,7 +106,14 @@ The default switches at 12:00 PM Manila time (`REPORT_DATE_SWITCH_HOUR`):
 | before 12:00 PM (e.g. 8 AM, 11 AM) | 11/16 (yesterday) |
 | 12:00 PM or later | 11/17 (today) |
 
-Future dates are rejected. A date more than 30 days back (`MAX_REPORT_DATE_AGE_DAYS`)
+Future dates are rejected.
+
+Next it asks `Currency (e.g. VND, THB) [Enter = all]:` — type one currency to check
+only those accounts, or press Enter for all. Codes (`VND`, `THB`, `MYR`, `IDR`, `USD`, ...)
+and LEO's labels (`TB`, `RM`, `Pp`, ...) both work, in any case. Or skip the prompt:
+```bat
+python main.py --currency VND
+``` A date more than 30 days back (`MAX_REPORT_DATE_AGE_DAYS`)
 asks `Is that the right date? [y/N]` — this catches year typos like `2025` for `2026`.
 
 ## Running Automatically (Task Scheduler)
@@ -115,7 +124,8 @@ python main.py --auto
 - Report date = the default date (today from 12:00 PM, yesterday before), no prompt.
 - Credentials come ONLY from `.env` (`LEO_USERNAME`, `LEO_PASSWORD`); if either is
   missing the run stops with an error instead of waiting for input.
-- The banner shows `Mode : auto (scheduled, no prompts)`.
+- Currency: all currencies, unless you add `--currency VND` (an unknown code stops the run).
+- The banner shows `Mode : auto (scheduled, no prompts)` and the `Currency`.
 
 Hourly task from 11:00 (one-time setup, PowerShell):
 ```powershell
@@ -130,6 +140,7 @@ Good to know:
   The task's default *"Do not start a new instance"* skips the next hour instead of
   running two copies at once.
 - Every run of the same day overwrites that day's CSVs; the log keeps every run.
+  Two tasks for different currencies on the same day would overwrite each other's CSVs.
 - The task only runs while the PC is on, awake, and (by default) you are logged in.
 
 ## Session Recovery

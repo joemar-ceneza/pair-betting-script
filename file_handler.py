@@ -94,21 +94,26 @@ EVIDENCE_COLUMNS = [
 ]
 
 
-def save_outputs(accounts: list[dict], scrape_result: dict, analysis_result: dict, report_date: date) -> list[str]:
-    """Write all five CSV reports to data/output/<Month>/<MM-DD-YYYY>/ and return their paths."""
-    folder = utils.build_dated_folder(config.OUTPUT_DIR, report_date)
+def _save_report(rows: list[dict], columns: list[str], filename: str, report_date: date) -> str:
+    """Write one CSV to data/output/<Month>/<MM-DD-YYYY>/, log it, and return its path."""
+    path = os.path.join(utils.build_dated_folder(config.OUTPUT_DIR, report_date), filename)
+    utils.write_csv(rows, columns, path)
+    logging.info("Saved: %s (%d rows)", filename, len(rows))
+    return path
+
+
+def save_accounts(accounts: list[dict], report_date: date) -> str:
+    """Write the Advanced Search (MKT) account list right after the search; return its path."""
+    return _save_report(accounts, ACCOUNT_COLUMNS, f"accounts_{report_date.strftime('%Y%m%d')}.csv", report_date)
+
+
+def save_outputs(scrape_result: dict, analysis_result: dict, report_date: date) -> list[str]:
+    """Write the four scrape/analysis CSV reports and return their paths."""
     stamp = report_date.strftime("%Y%m%d")
     reports = [
-        (accounts, ACCOUNT_COLUMNS, f"accounts_{stamp}.csv"),
         (scrape_result["players"], PLAYER_COLUMNS, f"player_info_{stamp}.csv"),
         (scrape_result["bets"], BET_COLUMNS, f"bets_{stamp}.csv"),
         (analysis_result["pairs"], PAIR_COLUMNS, f"pair_betting_{stamp}.csv"),
         (analysis_result["evidence"], EVIDENCE_COLUMNS, f"pair_rounds_{stamp}.csv"),
     ]
-    paths = []
-    for rows, columns, filename in reports:
-        path = os.path.join(folder, filename)
-        utils.write_csv(rows, columns, path)
-        logging.info("Saved: %s (%d rows)", filename, len(rows))
-        paths.append(path)
-    return paths
+    return [_save_report(rows, columns, filename, report_date) for rows, columns, filename in reports]

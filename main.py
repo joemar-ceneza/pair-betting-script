@@ -59,12 +59,17 @@ def _configure_bundled_browser() -> None:
 
 
 def _parse_args() -> argparse.Namespace:
-    """Command-line options: --auto for unattended runs (e.g. Task Scheduler)."""
+    """Command-line options: --auto for unattended runs (e.g. Task Scheduler), --currency to filter."""
     parser = argparse.ArgumentParser(description="Pair Betting Checker")
     parser.add_argument(
         "--auto",
         action="store_true",
         help="No prompts: default report date, credentials from .env only (for Task Scheduler).",
+    )
+    parser.add_argument(
+        "--currency",
+        help="Only check accounts in this currency, e.g. VND or THB (LEO labels like TB also work). "
+        "Without it: asked at the start, or all currencies with --auto.",
     )
     return parser.parse_args()
 
@@ -125,6 +130,39 @@ def _collect_report_date() -> date:
             return report_date
 
 
+def _normalize_currency(text: str) -> str | None:
+    """'vnd' -> 'VND', LEO label 'TB' -> 'THB', '' -> all currencies; None when LEO has no such currency."""
+    code = text.strip().upper()
+    if not code:
+        return config.MKT_ALL_CURRENCIES
+    code = config.MKT_CURRENCY_ALIASES.get(code, code)
+    return code if code in config.MKT_CURRENCIES else None
+
+
+def _ask_currency() -> str:
+    """Ask for one currency until a valid one (or Enter for all) is given."""
+    while True:
+        currency = _normalize_currency(input("Currency (e.g. VND, THB) [Enter = all]: "))
+        if currency:
+            return currency
+        logging.warning("Unknown currency — use a code like VND, THB, MYR, IDR or USD.")
+
+
+def _collect_currency(currency_arg: str | None, auto: bool) -> str:
+    """--currency wins; --auto without it means all currencies; otherwise ask."""
+    if currency_arg is not None:
+        currency = _normalize_currency(currency_arg)
+        if currency is None:
+            raise ValueError(f"Unknown --currency '{currency_arg}'. Use a code like VND, THB, MYR, IDR or USD.")
+        return currency
+    return config.MKT_ALL_CURRENCIES if auto else _ask_currency()
+
+
+def _currency_label(currency: str) -> str:
+    """'all' for no currency filter, otherwise the code."""
+    return "all" if currency == config.MKT_ALL_CURRENCIES else currency
+
+
 def _warn_if_no_bets(scrape_result: dict) -> None:
     """Warn when every player returned zero bets, so it is not mistaken for a clean result."""
     player_count = len(scrape_result["players"])
@@ -140,7 +178,7 @@ def _log_step(number: int, title: str) -> None:
     log_utils.log_section(f"STEP {number} — {title}")
 
 
-def _log_banner(report_date: date, log_path: str, auto: bool) -> None:
+def _log_banner(report_date: date, currency: str, log_path: str, auto: bool) -> None:
     """Log the run settings once the date is known."""
     log_utils.log_section(f"PAIR BETTING CHECK v{config.APP_VERSION}")
     log_utils.log_lines(
@@ -150,6 +188,7 @@ def _log_banner(report_date: date, log_path: str, auto: bool) -> None:
             log_utils.field("Time window", f"{config.DAY_START} - {config.DAY_END}"),
             log_utils.field("Product", config.LIVE_CASINO_PRODUCT_NAME),
             log_utils.field("Accounts from", "Advanced Search (MKT), deposited only (see STEP 3)"),
+            log_utils.field("Currency", _currency_label(currency)),
             log_utils.field("Headless", config.HEADLESS),
             log_utils.field("Settle tolerance", f"{config.SETTLE_TOLERANCE_SECONDS}s"),
             log_utils.field("Min opposite", config.MIN_OPPOSITE_ROUNDS),
@@ -204,14 +243,16 @@ def main() -> None:
     leo_username, leo_password = _collect_credentials(args.auto)
     logging.info("Logging in as: %s with password: ***", leo_username)
 
-    # Step 2: Collect report date (--auto: the default date, no prompt)
-    _log_step(2, "Collecting report date")
+    # Step 2: Collect report date and currency (--auto: the default date, no prompts)
+    _log_step(2, "Collecting report date and currency")
     report_date = _default_report_date() if args.auto else _collect_report_date()
-    _log_banner(report_date, log_path, args.auto)
+    currency = _collect_currency(args.currency, args.auto)
+    _log_banner(report_date, currency, log_path, args.auto)
 
-    # Step 3: Find the accounts to check with Advanced Search (MKT)
+    # Step 3: Find the accounts to check with Advanced Search (MKT), and save the list right away
     _log_step(3, "Finding accounts (Advanced Search MKT)")
-    accounts = account_search.run_account_search((leo_username, leo_password), report_date)
+    accounts = account_search.run_account_search((leo_username, leo_password), report_date, currency)
+    accounts_file = file_handler.save_accounts(accounts, report_date)
     if len(accounts) < 2:
         logging.warning("Need at least 2 accounts to compare, found %d. Exiting.", len(accounts))
         return
@@ -227,7 +268,7 @@ def main() -> None:
 
     # Step 6: Save outputs
     _log_step(6, "Saving output files")
-    output_files = file_handler.save_outputs(accounts, scrape_result, analysis_result, report_date)
+    output_files = [accounts_file] + file_handler.save_outputs(scrape_result, analysis_result, report_date)
 
     _log_summary(len(accounts), scrape_result, analysis_result, output_files, time.monotonic() - started)
 

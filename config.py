@@ -62,6 +62,20 @@ MKT_DEPOSIT_STATUS = "1"  # Initial Deposit Status: 1 = Deposited, "0,2,3,4,5,6"
 MKT_SERVICE_PROVIDER = "-1"  # -1 = any provider
 MKT_PROMOTION_STATUS = "-1"  # -1 = any promotion status
 MKT_ROW_LIMIT = "top_10000"  # LEO's largest option; a full result is warned about (may be cut off)
+
+# Currency filter: asked at the start (Enter = all) or passed with --currency (e.g. --currency VND).
+MKT_ALL_CURRENCIES = "-1"
+# Option values of LEO's Currency dropdown (selcei.Currency)
+MKT_CURRENCIES = (
+    "AUD", "BDT", "BND", "BRL", "BTC", "CAD", "CHF", "CNY", "ETH", "EUR", "GBP", "HKD", "IDR", "INR",
+    "JPY", "KHR", "KRW", "LAK", "LKR", "MMK", "MYR", "NOK", "NZD", "PHP", "SEK", "SGD", "THB", "TMP",
+    "TWD", "USD", "UST", "VND", "ZAR", "ZWD",
+)  # fmt: skip
+# LEO's display labels (as shown in results, e.g. 'TB') -> dropdown value
+MKT_CURRENCY_ALIASES = {
+    "TB": "THB", "RM": "MYR", "PP": "IDR", "RMB": "CNY", "SD$": "SGD", "HK$": "HKD",
+    "US$": "USD", "USDT": "UST", "PESO": "PHP", "YEN": "JPY", "EURO": "EUR",
+}  # fmt: skip
 MKT_ROW_LIMIT_COUNT = 10000
 MKT_SEARCH_TIMEOUT = 120000  # ms — a large search can take a while to come back
 
