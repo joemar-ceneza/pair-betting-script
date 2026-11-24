@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import argparse
 import getpass
 import logging
 from collections import Counter
@@ -57,11 +58,26 @@ def _configure_bundled_browser() -> None:
     )
 
 
-def _collect_credentials() -> tuple[str, str]:
-    """Read LEO credentials from the .env beside the script/exe, prompting if missing."""
+def _parse_args() -> argparse.Namespace:
+    """Command-line options: --auto for unattended runs (e.g. Task Scheduler)."""
+    parser = argparse.ArgumentParser(description="Pair Betting Checker")
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="No prompts: default report date, credentials from .env only (for Task Scheduler).",
+    )
+    return parser.parse_args()
+
+
+def _collect_credentials(auto: bool) -> tuple[str, str]:
+    """Read LEO credentials from the .env beside the script/exe; prompt if missing (never with --auto)."""
     load_dotenv(config.ENV_FILE)
-    username = os.getenv("LEO_USERNAME") or input("LEO username: ").strip()
-    password = os.getenv("LEO_PASSWORD") or getpass.getpass("LEO password: ")
+    username = os.getenv("LEO_USERNAME", "").strip()
+    password = os.getenv("LEO_PASSWORD", "")
+    if auto and (not username or not password):
+        raise ValueError(f"--auto needs LEO_USERNAME and LEO_PASSWORD in {config.ENV_FILE}")
+    username = username or input("LEO username: ").strip()
+    password = password or getpass.getpass("LEO password: ")
     if not username or not password:
         raise ValueError("LEO username and password are required.")
     return username, password
@@ -124,11 +140,12 @@ def _log_step(number: int, title: str) -> None:
     log_utils.log_section(f"STEP {number} — {title}")
 
 
-def _log_banner(report_date: date, log_path: str) -> None:
+def _log_banner(report_date: date, log_path: str, auto: bool) -> None:
     """Log the run settings once the date is known."""
     log_utils.log_section(f"PAIR BETTING CHECK v{config.APP_VERSION}")
     log_utils.log_lines(
         [
+            log_utils.field("Mode", "auto (scheduled, no prompts)" if auto else "interactive"),
             log_utils.field("Report date", report_date.strftime(config.INPUT_DATE_FORMAT)),
             log_utils.field("Time window", f"{config.DAY_START} - {config.DAY_END}"),
             log_utils.field("Product", config.LIVE_CASINO_PRODUCT_NAME),
@@ -177,19 +194,20 @@ def _log_summary(
 # ======================================================
 def main() -> None:
     """Run the full workflow: credentials → date → find accounts → scrape → detect pairs → save CSVs."""
+    args = _parse_args()
     log_path = _setup_logging()
     _configure_bundled_browser()
     started = time.monotonic()
 
     # Step 1: Collect credentials
     _log_step(1, "Collecting credentials")
-    leo_username, leo_password = _collect_credentials()
+    leo_username, leo_password = _collect_credentials(args.auto)
     logging.info("Logging in as: %s with password: ***", leo_username)
 
-    # Step 2: Collect report date
+    # Step 2: Collect report date (--auto: the default date, no prompt)
     _log_step(2, "Collecting report date")
-    report_date = _collect_report_date()
-    _log_banner(report_date, log_path)
+    report_date = _default_report_date() if args.auto else _collect_report_date()
+    _log_banner(report_date, log_path, args.auto)
 
     # Step 3: Find the accounts to check with Advanced Search (MKT)
     _log_step(3, "Finding accounts (Advanced Search MKT)")

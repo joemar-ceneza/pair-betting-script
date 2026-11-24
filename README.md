@@ -107,6 +107,31 @@ The default switches at 12:00 PM Manila time (`REPORT_DATE_SWITCH_HOUR`):
 Future dates are rejected. A date more than 30 days back (`MAX_REPORT_DATE_AGE_DAYS`)
 asks `Is that the right date? [y/N]` — this catches year typos like `2025` for `2026`.
 
+## Running Automatically (Task Scheduler)
+`--auto` runs with no prompts, so Windows Task Scheduler can start it:
+```bat
+python main.py --auto
+```
+- Report date = the default date (today from 12:00 PM, yesterday before), no prompt.
+- Credentials come ONLY from `.env` (`LEO_USERNAME`, `LEO_PASSWORD`); if either is
+  missing the run stops with an error instead of waiting for input.
+- The banner shows `Mode : auto (scheduled, no prompts)`.
+
+Hourly task from 11:00 (one-time setup, PowerShell):
+```powershell
+schtasks /Create /TN "Pair Betting Checker" /SC HOURLY /ST 11:00 /TR "\"<workspace>\.venv\Scripts\python.exe\" \"<workspace>\pair-betting-checker\main.py\" --auto"
+```
+Replace `<workspace>` with the full path of the `Python Development` folder.
+Check it: `schtasks /Query /TN "Pair Betting Checker" /V /FO LIST`. Remove it:
+`schtasks /Delete /TN "Pair Betting Checker" /F`.
+
+Good to know:
+- A run with many accounts can take longer than an hour (about 8s per account).
+  The task's default *"Do not start a new instance"* skips the next hour instead of
+  running two copies at once.
+- Every run of the same day overwrites that day's CSVs; the log keeps every run.
+- The task only runs while the PC is on, awake, and (by default) you are logged in.
+
 ## Session Recovery
 If the network drops or the LEO session expires, every remaining player would fail.
 To prevent that:
