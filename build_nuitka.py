@@ -22,7 +22,7 @@ EXE_NAME = "pair_betting_checker.exe"
 COMPANY_NAME = "Your Company"
 PRODUCT_NAME = "Pair Betting Checker"
 FILE_DESCRIPTION = "Detects pair betting in LEO Live Casino bet lists"
-ICON_PATH = ""  # e.g. os.path.join(PROJECT_DIR, "favicon.ico"); leave "" for no icon
+ICON_PATH = "favicon.ico"  # e.g. os.path.join(PROJECT_DIR, "favicon.ico"); leave "" for no icon
 
 REQUIRED_BROWSERS = ("chromium", "chromium-headless-shell")
 OPTIONAL_BROWSERS = ("ffmpeg", "winldd")
