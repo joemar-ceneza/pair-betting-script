@@ -6,6 +6,7 @@ import logging
 from datetime import date
 from typing import Any, Callable
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Frame, Page
 
 # English names regardless of the Windows locale, so folders are always "September", "October", ...
@@ -48,6 +49,20 @@ def get_frame(page: Page, frame_name: str, timeout_ms: int = 15000) -> Frame:
             return frame
         page.wait_for_timeout(250)
     raise TimeoutError(f"Frame '{frame_name}' not found within {timeout_ms} ms")
+
+
+def find_frame_with(page: Page, selector: str, timeout_ms: int = 15000) -> Frame:
+    """Return the first frame containing selector, polling until it appears or the timeout passes."""
+    deadline = time.monotonic() + timeout_ms / 1000
+    while time.monotonic() < deadline:
+        for frame in page.frames:
+            try:
+                if not frame.is_detached() and frame.locator(selector).count() > 0:
+                    return frame
+            except PlaywrightError:
+                continue  # frame is navigating right now; check it again on the next poll
+        page.wait_for_timeout(250)
+    raise TimeoutError(f"No frame with '{selector}' found within {timeout_ms} ms")
 
 
 def parse_amount(text: str) -> float:

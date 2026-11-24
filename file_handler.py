@@ -5,6 +5,14 @@ from datetime import date
 import config
 import utils
 
+ACCOUNT_COLUMNS = [
+    "account_id",
+    "created_date",
+    "currency",
+    "deposit_status",
+    "promotion_code",
+    "promotion_status",
+]
 PLAYER_COLUMNS = [
     "username",
     "customer",
@@ -82,11 +90,12 @@ EVIDENCE_COLUMNS = [
 ]
 
 
-def save_outputs(scrape_result: dict, analysis_result: dict, report_date: date) -> list[str]:
-    """Write all four CSV reports to data/output/<Month>/<MM-DD-YYYY>/ and return their paths."""
+def save_outputs(accounts: list[dict], scrape_result: dict, analysis_result: dict, report_date: date) -> list[str]:
+    """Write all five CSV reports to data/output/<Month>/<MM-DD-YYYY>/ and return their paths."""
     folder = utils.build_dated_folder(config.OUTPUT_DIR, report_date)
     stamp = report_date.strftime("%Y%m%d")
     reports = [
+        (accounts, ACCOUNT_COLUMNS, f"accounts_{stamp}.csv"),
         (scrape_result["players"], PLAYER_COLUMNS, f"player_info_{stamp}.csv"),
         (scrape_result["bets"], BET_COLUMNS, f"bets_{stamp}.csv"),
         (analysis_result["pairs"], PAIR_COLUMNS, f"pair_betting_{stamp}.csv"),

@@ -220,7 +220,7 @@ def main() -> None:
         _fail(f"Nuitka finished but the exe was not found: {exe_path}")
     size_mb = os.path.getsize(exe_path) / (1024 * 1024)
     logging.info("Build complete: %s (%.0f MB)", exe_path, size_mb)
-    logging.info("Ship only the exe. Put .env and usernames.txt beside it.")
+    logging.info("Ship only the exe. Put .env beside it.")
 
 
 if __name__ == "__main__":

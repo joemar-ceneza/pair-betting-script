@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import time
 import getpass
@@ -12,6 +11,7 @@ from dotenv import load_dotenv
 import config
 import log_utils
 import utils
+import account_search
 import scraper
 import analysis
 import file_handler
@@ -55,18 +55,6 @@ def _configure_bundled_browser() -> None:
         "Bundled browser folder not found (checked: %s). Playwright will use its default location.",
         ", ".join(candidates),
     )
-
-
-def _load_usernames(path: str) -> list[str]:
-    """Read one username per line, dropping blanks, duplicates and invalid entries."""
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Usernames file not found: {path}")
-    with open(path, "r", encoding="utf-8") as f:
-        lines = [line.strip() for line in f if line.strip()]
-    valid = [name for name in lines if re.match(config.USERNAME_PATTERN, name)]
-    if len(valid) != len(lines):
-        logging.warning("Skipped %d invalid username line(s).", len(lines) - len(valid))
-    return list(dict.fromkeys(valid))
 
 
 def _collect_credentials() -> tuple[str, str]:
@@ -136,15 +124,20 @@ def _log_step(number: int, title: str) -> None:
     log_utils.log_section(f"STEP {number} — {title}")
 
 
-def _log_banner(report_date: date, player_count: int, log_path: str) -> None:
+def _log_banner(report_date: date, log_path: str) -> None:
     """Log the run settings once the date is known."""
+    created_from = report_date - timedelta(days=config.MKT_CREATED_DAYS_BACK)
     log_utils.log_section(f"PAIR BETTING CHECK v{config.APP_VERSION}")
     log_utils.log_lines(
         [
             log_utils.field("Report date", report_date.strftime(config.INPUT_DATE_FORMAT)),
             log_utils.field("Time window", f"{config.DAY_START} - {config.DAY_END}"),
             log_utils.field("Product", config.LIVE_CASINO_PRODUCT_NAME),
-            log_utils.field("Players", player_count),
+            log_utils.field("Accounts from", "Advanced Search (MKT), deposited only"),
+            log_utils.field(
+                "Accounts created",
+                f"{created_from.strftime(config.INPUT_DATE_FORMAT)} - {report_date.strftime(config.INPUT_DATE_FORMAT)}",
+            ),
             log_utils.field("Headless", config.HEADLESS),
             log_utils.field("Settle tolerance", f"{config.SETTLE_TOLERANCE_SECONDS}s"),
             log_utils.field("Min opposite", config.MIN_OPPOSITE_ROUNDS),
@@ -157,10 +150,13 @@ def _log_banner(report_date: date, player_count: int, log_path: str) -> None:
     )
 
 
-def _log_summary(scrape_result: dict, analysis_result: dict, output_files: list[str], elapsed: float) -> None:
+def _log_summary(
+    account_count: int, scrape_result: dict, analysis_result: dict, output_files: list[str], elapsed: float
+) -> None:
     """Log the final RUN SUMMARY block."""
     risk_counts = Counter(pair["risk"] for pair in analysis_result["pairs"])
     lines = [
+        log_utils.field("Accounts found", account_count),
         log_utils.field("Players OK", len(scrape_result["players"])),
         log_utils.field("Players failed", len(scrape_result["failures"])),
         log_utils.field("Recovered on retry", scrape_result["recovered"]),
@@ -185,28 +181,28 @@ def _log_summary(scrape_result: dict, analysis_result: dict, output_files: list[
 # WORKFLOW
 # ======================================================
 def main() -> None:
-    """Run the full workflow: load users → login → scrape → detect pairs → save CSVs."""
+    """Run the full workflow: credentials → date → find accounts → scrape → detect pairs → save CSVs."""
     log_path = _setup_logging()
     _configure_bundled_browser()
     started = time.monotonic()
 
-    # Step 1: Load usernames
-    _log_step(1, "Loading usernames")
-    usernames = _load_usernames(config.USERNAMES_FILE)
-    if len(usernames) < 2:
-        logging.warning("Need at least 2 usernames to compare. Exiting.")
-        return
-    logging.info("%s", log_utils.field("Usernames", len(usernames)))
-
-    # Step 2: Collect credentials
-    _log_step(2, "Collecting credentials")
+    # Step 1: Collect credentials
+    _log_step(1, "Collecting credentials")
     leo_username, leo_password = _collect_credentials()
     logging.info("Logging in as: %s with password: ***", leo_username)
 
-    # Step 3: Collect report date
-    _log_step(3, "Collecting report date")
+    # Step 2: Collect report date
+    _log_step(2, "Collecting report date")
     report_date = _collect_report_date()
-    _log_banner(report_date, len(usernames), log_path)
+    _log_banner(report_date, log_path)
+
+    # Step 3: Find the accounts to check with Advanced Search (MKT)
+    _log_step(3, "Finding accounts (Advanced Search MKT)")
+    accounts = account_search.run_account_search((leo_username, leo_password), report_date)
+    usernames = [account["account_id"] for account in accounts]
+    if len(usernames) < 2:
+        logging.warning("Need at least 2 accounts to compare, found %d. Exiting.", len(usernames))
+        return
 
     # Step 4: Scrape basic info, statement figures and bet lists
     _log_step(4, f"Scraping {len(usernames)} players")
@@ -219,9 +215,9 @@ def main() -> None:
 
     # Step 6: Save outputs
     _log_step(6, "Saving output files")
-    output_files = file_handler.save_outputs(scrape_result, analysis_result, report_date)
+    output_files = file_handler.save_outputs(accounts, scrape_result, analysis_result, report_date)
 
-    _log_summary(scrape_result, analysis_result, output_files, time.monotonic() - started)
+    _log_summary(len(accounts), scrape_result, analysis_result, output_files, time.monotonic() - started)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,31 @@
 # Pair Betting Checker
 
 ## What This Does
-Logs into LEO, collects each player's basic information and their Live Casino
-bet list for one day, then compares every pair of accounts round by round to
-find pair betting (two accounts betting opposite sides of the same rounds).
+Logs into LEO, finds the accounts to check with **Advanced Search (MKT)**
+(deposited accounts created yesterday to today), collects each player's basic
+information and their Live Casino bet list for one day, then compares every pair
+of accounts round by round to find pair betting (two accounts betting opposite
+sides of the same rounds). No account list has to be typed in.
+
+## How Accounts Are Found
+Step 3 of every run opens **WMA → Advanced Search (MKT)** in LEO (by clicking,
+like a person would), fills the form and clicks **Search**:
+
+| Filter | Value | Setting in `config.py` |
+|---|---|---|
+| Created date | report date - 1 day → report date | `MKT_CREATED_DAYS_BACK = 1` |
+| Initial deposit status | Deposited | `MKT_DEPOSIT_STATUS = "1"` |
+| Service provider | any | `MKT_SERVICE_PROVIDER = "-1"` |
+| Promotion status | any | `MKT_PROMOTION_STATUS = "-1"` |
+| Row limit | Top 10000 | `MKT_ROW_LIMIT = "top_10000"` |
+
+The result table is read straight from the page (no Excel download). LEO lists an
+account once per service provider, so repeated account IDs are checked only once.
+Every account found is saved to `accounts_YYYYMMDD.csv`. If the search returns the
+full 10,000 rows, a warning says some accounts may be missing.
+
+Example: report date 11/24 checks the bets on 11/24 of every deposited account
+created 11/23 - 11/24.
 
 ## How Detection Works
 1. Each account's bets in the same round are added together
@@ -66,7 +88,6 @@ Run them after changing anything in `analysis.py` or the detection thresholds.
    playwright install chromium
 ```
 3. Copy `.env.example` to `.env` and fill in your LEO credentials.
-4. Put account IDs in `usernames.txt` (one per line).
 
 ## How to Run
 ```bat
@@ -117,6 +138,7 @@ data/
 ├── output/
 │   └── October/
 │       └── 10-14-2026/          ← by REPORT date (the day checked)
+│           ├── accounts_20261014.csv
 │           ├── player_info_20261014.csv
 │           ├── bets_20261014.csv
 │           ├── pair_betting_20261014.csv
@@ -138,6 +160,7 @@ Example: checking 10/14 on the morning of 10/15 gives
 ## Output Files
 | File | Contents |
 |---|---|
+| `accounts_YYYYMMDD.csv` | Accounts found by Advanced Search (MKT): account ID, created date, currency, deposit status, promotion code and status |
 | `player_info_YYYYMMDD.csv` | Basic information per player |
 | `bets_YYYYMMDD.csv` | Every Live Casino bet |
 | `pair_betting_YYYYMMDD.csv` | Every pair with shared rounds or a shared IP: risk, pattern (HEDGE / CHIP DUMP), signals, one-way flow direction and amount |
@@ -167,7 +190,6 @@ Copy only the exe, then add the user files beside it:
 any_folder/
 ├── pair_betting_checker.exe
 ├── .env
-├── usernames.txt
 └── data/          ← created automatically on first run
 ```
 
@@ -175,7 +197,7 @@ any_folder/
 Playwright silently falls back to the dev machine's browsers, so test without them:
 
 1. Rename `%LOCALAPPDATA%\ms-playwright` to `ms-playwright.bak`.
-2. Copy the exe, `.env` and `usernames.txt` into an empty folder and run the exe.
+2. Copy the exe and `.env` into an empty folder and run the exe.
 3. Success = the log reaches `Logged in to LEO.` with no
    `Bundled browser folder not found` warning.
 4. Rename `ms-playwright.bak` back to `ms-playwright`.
@@ -191,18 +213,19 @@ Playwright silently falls back to the dev machine's browsers, so test without th
 pair-betting-checker/
 ├── main.py               # Orchestrator — numbered steps only
 ├── config.py             # Settings, paths, version, detection thresholds
-├── scraper.py            # Login → basic info → bet list
+├── account_search.py     # Advanced Search (MKT) → accounts to check
+├── scraper.py            # Basic info → statement → bet list per account
+├── leo_session.py        # Shared LEO login, pause, screenshot, browser close
 ├── analysis.py           # Round-by-round pair-betting detection
 ├── file_handler.py       # CSV outputs
 ├── utils.py              # Generic helpers (retry, frames, dated folders)
 ├── log_utils.py          # Line-by-line log helpers + terminal colors
 ├── build_nuitka.py       # Builds the single-file exe
-├── tests/                # Offline tests for the detection rules (unittest)
+├── tests/                # Offline tests: detection rules, MKT result parsing (unittest)
 ├── requirements.txt      # Runtime dependencies
 ├── requirements-dev.txt  # Build-only (Nuitka)
 ├── pyproject.toml        # Black settings (line length 120)
 ├── .env.example          # Credential template
-├── usernames.txt         # Account IDs to check (not in Git)
 └── data/                 # Output, logs, screenshots (not in Git)
 ```
 

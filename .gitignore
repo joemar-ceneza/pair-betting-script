@@ -1,6 +1,5 @@
 # Secrets and user input
 .env
-usernames.txt
 
 # Runtime data (logs, screenshots, output)
 data/

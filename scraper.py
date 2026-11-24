@@ -3,10 +3,10 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
-from playwright.sync_api import Browser, Frame, Page, sync_playwright
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Frame, Page, sync_playwright
 
 import config
+import leo_session
 import log_utils
 import utils
 
@@ -76,60 +76,21 @@ _INFO_LABELS = [
 
 
 # ======================================================
-# THROTTLE
+# SESSION (re-login and memory refresh)
 # ======================================================
-def _pause(page: Page) -> None:
-    """Deliberate pause between LEO actions so the site is not hit too fast (STEP_DELAY_SECONDS)."""
-    page.wait_for_timeout(config.STEP_DELAY_SECONDS * 1000)
-
-
-# ======================================================
-# LOGIN
-# ======================================================
-def _dismiss_login_warning(leo_page: Page) -> None:
-    """Click 'continue' on the login warning popup if it appears."""
-    try:
-        leo_page.locator("#tblExchange").wait_for(state="visible", timeout=config.POPUP_TIMEOUT)
-    except PlaywrightTimeoutError:
-        return
-    leo_page.click("#continue")
-    logging.info("Login warning popup dismissed.")
-
-
-def _login(leo_page: Page, username: str, password: str) -> None:
-    """Log into LEO and wait until the menu frame is available."""
-    leo_page.goto(config.LEO_LOGIN_URL, timeout=config.PAGE_TIMEOUT)
-    leo_page.fill("#txtUsername", username)
-    leo_page.fill("#txtPassword", password)
-    leo_page.click("#btnLogin")
-    leo_page.wait_for_load_state("load")
-    _dismiss_login_warning(leo_page)
-    utils.get_frame(leo_page, "menu", config.FRAME_TIMEOUT)
-    logging.info("Logged in to LEO.")
-
-
-def _first_login(leo_page: Page, credentials: tuple[str, str]) -> None:
-    """Log in at the start of the run; screenshot and re-raise if it fails."""
-    try:
-        _login(leo_page, *credentials)
-    except Exception:
-        _save_error_screenshot(leo_page, "login")
-        raise
-
-
 def _relogin(leo_page: Page, credentials: tuple[str, str]) -> bool:
     """Log in to LEO again after repeated failures. Returns False if LEO stays unreachable."""
     logging.warning("%d players failed in a row — logging in to LEO again.", config.MAX_CONSECUTIVE_FAILURES)
     try:
         utils.retry(
-            lambda: _login(leo_page, *credentials),
+            lambda: leo_session.login(leo_page, credentials),
             retries=config.RETRY_ATTEMPTS,
             delay=config.RELOGIN_RETRY_DELAY,
         )
         return True
     except Exception as error:
         logging.error("Re-login to LEO failed: %s", error)
-        _save_error_screenshot(leo_page, "re-login")
+        leo_session.save_error_screenshot(leo_page, "re-login")
         return False
 
 
@@ -140,15 +101,6 @@ def _refresh_if_due(leo_page: Page, position: int) -> None:
         leo_page.reload()
         leo_page.wait_for_load_state("load")
         utils.get_frame(leo_page, "menu", config.FRAME_TIMEOUT)
-
-
-def _close_browser(browser: Browser) -> None:
-    """Close the browser; if it is already gone (e.g. run stopped with Ctrl+C), just note it."""
-    try:
-        browser.close()
-        logging.info("Browser closed cleanly.")
-    except Exception as error:
-        logging.warning("Browser was already closed (%s).", type(error).__name__)
 
 
 # ======================================================
@@ -338,7 +290,7 @@ def _read_live_casino_bets(betlist_page: Page, live_row: Optional[dict], usernam
     """Follow the statement's Live Casino link (old or recent date) and parse the bets."""
     if live_row is None or not live_row["href"]:
         return []
-    _pause(betlist_page)
+    leo_session.pause(betlist_page)
     bets = _parse_bets(_read_betlist_rows(betlist_page, live_row["href"], username), username)
     if not bets:
         logging.warning("Statement shows Live Casino betting but the bet list returned no rows.")
@@ -352,11 +304,11 @@ def _process_player(leo_page: Page, betlist_page: Page, username: str, report_da
     """Search → basic info → Stmt (win/loss, turnover) → bet list, pausing between LEO actions."""
     balance_frame = _search_player(leo_page, username)
     info = _read_player_info(balance_frame, username)
-    _pause(leo_page)
+    leo_session.pause(leo_page)
     statement_frame = _open_statement(leo_page, username)
-    _pause(leo_page)
+    leo_session.pause(leo_page)
     _show_turnover(statement_frame, username, report_date)
-    _pause(leo_page)
+    leo_session.pause(leo_page)
     live_row = _find_live_casino_row(statement_frame, report_date)
     info.update(_statement_figures(live_row))
     bets = _read_live_casino_bets(betlist_page, live_row, username)
@@ -371,17 +323,6 @@ def _build_player_report(info: dict) -> list[str]:
     lines.append(log_utils.field("Win/Loss", f"{info['winloss']:+,.2f}"))
     lines.append(log_utils.field("Bets", info["bet_count"]))
     return lines
-
-
-def _save_error_screenshot(page: Page, label: str) -> None:
-    """Save the next numbered screenshot to data/screenshots/<Month>/<MM-DD-YYYY>/."""
-    try:
-        folder = utils.build_dated_folder(config.SCREENSHOT_ROOT, date.today())
-        path = utils.next_numbered_path(folder, config.SCREENSHOT_PREFIX, ".png")
-        page.screenshot(path=path)
-        logging.info("Screenshot for %s: %s", label, path)
-    except Exception as error:
-        logging.warning("Could not save screenshot for %s: %s", label, error)
 
 
 def _handle_player(
@@ -399,7 +340,7 @@ def _handle_player(
         )
     except Exception as error:
         logging.error("Failed: %s", error)
-        _save_error_screenshot(leo_page, username)
+        leo_session.save_error_screenshot(leo_page, username)
         logging.info("[%s] %s — ERROR (%.1fs)", position, username, time.monotonic() - started)
         return None, [], str(error)
     log_utils.log_lines(_build_player_report(info))
@@ -488,9 +429,9 @@ def run_scraper(usernames: list[str], leo_username: str, leo_password: str, repo
         try:
             context = browser.new_context()
             pages = (context.new_page(), context.new_page())
-            _first_login(pages[0], credentials)
-            _pause(pages[0])
+            leo_session.first_login(pages[0], credentials)
+            leo_session.pause(pages[0])
             first = _scrape_batch(pages, usernames, report_date, credentials, "")
             return _retry_failed_players(pages, first, report_date, credentials)
         finally:
-            _close_browser(browser)
+            leo_session.close_browser(browser)

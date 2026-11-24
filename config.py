@@ -29,7 +29,6 @@ else:
 # PATHS (user files and data/ live BESIDE the exe)
 # ======================================================
 ENV_FILE = os.path.join(BASE_DIR, ".env")
-USERNAMES_FILE = os.path.join(BASE_DIR, "usernames.txt")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 OUTPUT_DIR = os.path.join(DATA_DIR, "output")
 LOG_ROOT = os.path.join(DATA_DIR, "logs")
@@ -51,6 +50,20 @@ LEO_LOGIN_URL = "http://leo-a01.sbobet.com.tw:8088/Default.aspx"
 LIVE_CASINO_PRODUCT_NAME = "Live Casino & Casino Games"  # PRODUCT column text on the statement
 LEO_CURRENCY_MAP = {"TB": "Tb"}
 USERNAME_PATTERN = r"^[A-Za-z0-9_.@-]+$"
+
+# ======================================================
+# ADVANCED SEARCH (MKT) — finds the accounts to check
+# ======================================================
+# Path: top toolbar 'WMA' → WMA toolbar 'Advanced Search (MKT)' → form in the 'icontents' frame.
+# Accounts CREATED from (report date - MKT_CREATED_DAYS_BACK) to the report date are checked,
+# e.g. report date 11/24 → created 11/23 - 11/24 ("yesterday to today").
+MKT_CREATED_DAYS_BACK = 1
+MKT_DEPOSIT_STATUS = "1"  # Initial Deposit Status: 1 = Deposited, "0,2,3,4,5,6" = No Deposit, -1 = any
+MKT_SERVICE_PROVIDER = "-1"  # -1 = any provider
+MKT_PROMOTION_STATUS = "-1"  # -1 = any promotion status
+MKT_ROW_LIMIT = "top_10000"  # LEO's largest option; a full result is warned about (may be cut off)
+MKT_ROW_LIMIT_COUNT = 10000
+MKT_SEARCH_TIMEOUT = 120000  # ms — a large search can take a while to come back
 
 # ======================================================
 # BROWSER
