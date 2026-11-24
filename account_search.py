@@ -155,9 +155,16 @@ def _read_results(form_frame: Frame) -> list[list[str]]:
 # ======================================================
 # SEARCH + REPORT
 # ======================================================
-def _search_accounts(leo_page: Page, report_date: date, currency: str) -> list[list[str]]:
-    """Open the MKT form, fill it, search, and return the raw result rows (screenshot on failure)."""
+def _search_accounts(
+    leo_page: Page, credentials: tuple[str, str], report_date: date, currency: str
+) -> list[list[str]]:
+    """
+    One search attempt: log in fresh (an outage or 503 can drop the LEO session), open the
+    MKT form, fill it, search, and return the raw result rows (screenshot on failure).
+    """
     try:
+        leo_session.login(leo_page, credentials)
+        leo_session.pause(leo_page)
         form_frame = _open_advanced_search(leo_page)
         for section in _SECTIONS:
             _expand_section(form_frame, section)
@@ -209,12 +216,12 @@ def run_account_search(credentials: tuple[str, str], report_date: date, currency
         browser = p.chromium.launch(headless=config.HEADLESS)
         try:
             leo_page = browser.new_context().new_page()
-            leo_session.first_login(leo_page, credentials)
-            leo_session.pause(leo_page)
+            # Each attempt logs in again, and attempts are RELOGIN_RETRY_DELAY apart, so a short
+            # LEO outage costs a few minutes instead of the whole run.
             rows = utils.retry(
-                lambda: _search_accounts(leo_page, report_date, currency),
+                lambda: _search_accounts(leo_page, credentials, report_date, currency),
                 retries=config.RETRY_ATTEMPTS,
-                delay=config.RETRY_DELAY,
+                delay=config.RELOGIN_RETRY_DELAY,
             )
         finally:
             leo_session.close_browser(browser)

@@ -34,13 +34,25 @@ def login(leo_page: Page, credentials: tuple[str, str]) -> None:
     logging.info("Logged in to LEO.")
 
 
-def first_login(leo_page: Page, credentials: tuple[str, str]) -> None:
-    """Log in at the start of a browser session; screenshot and re-raise if it fails."""
+def login_or_screenshot(leo_page: Page, credentials: tuple[str, str]) -> None:
+    """Log in once; screenshot and re-raise if it fails."""
     try:
         login(leo_page, credentials)
     except Exception:
         save_error_screenshot(leo_page, "login")
         raise
+
+
+def first_login(leo_page: Page, credentials: tuple[str, str]) -> None:
+    """
+    Log in at the start of a browser session. A short LEO outage (503, page not loading,
+    connection reset) is ridden out: RETRY_ATTEMPTS tries, RELOGIN_RETRY_DELAY seconds apart.
+    """
+    utils.retry(
+        lambda: login_or_screenshot(leo_page, credentials),
+        retries=config.RETRY_ATTEMPTS,
+        delay=config.RELOGIN_RETRY_DELAY,
+    )
 
 
 # ======================================================

@@ -135,6 +135,22 @@ Replace `<workspace>` with the full path of the `Python Development` folder.
 Check it: `schtasks /Query /TN "Pair Betting Checker" /V /FO LIST`. Remove it:
 `schtasks /Delete /TN "Pair Betting Checker" /F`.
 
+### Using the exe instead of Python
+Put the exe in its own folder with `.env` beside it, e.g. `C:\PairBettingChecker\`:
+```text
+C:\PairBettingChecker\
+├── pair_betting_checker.exe
+├── .env                  # LEO_USERNAME / LEO_PASSWORD
+└── data\                 # created by the first run (logs, CSVs, screenshots)
+```
+Then create the hourly task:
+```powershell
+schtasks /Create /TN "Pair Betting Checker" /SC HOURLY /ST 11:00 /TR "\"C:\PairBettingChecker\pair_betting_checker.exe\" --auto"
+```
+Add `--currency VND` after `--auto` to check one currency. The exe always reads `.env` and
+writes `data\` beside itself, wherever Task Scheduler starts it. After a rebuild, copy the new
+exe over the old one (the task keeps working, no need to recreate it).
+
 Good to know:
 - A run with many accounts can take longer than an hour (about 8s per account).
   The task's default *"Do not start a new instance"* skips the next hour instead of
@@ -144,8 +160,14 @@ Good to know:
 - The task only runs while the PC is on, awake, and (by default) you are logged in.
 
 ## Session Recovery
-If the network drops or the LEO session expires, every remaining player would fail.
-To prevent that:
+**LEO outage at the start** (503 Service Unavailable, login page not loading, connection reset):
+logging in and the Advanced Search (MKT) are each tried 3 times, 30s apart (`RELOGIN_RETRY_DELAY`),
+and every search attempt logs in fresh. A short outage is ridden out instead of failing that hour's
+run; the log shows `Attempt 1 of 3 failed: ... — trying again in 30s`. If LEO is still down after
+3 tries the run stops with an error (and the next scheduled run tries again).
+
+**During the scrape**, if the network drops or the LEO session expires, every remaining player
+would fail. To prevent that:
 1. After 2 players fail in a row (`MAX_CONSECUTIVE_FAILURES`), the script logs in to LEO again.
 2. If logging in again fails 3 times, 30s apart (`RELOGIN_RETRY_DELAY`), the scrape stops,
    the remaining players are listed as `Not checked`, and the results so far are saved.

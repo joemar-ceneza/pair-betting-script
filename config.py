@@ -99,6 +99,8 @@ STEP_DELAY_SECONDS = 2
 # (a dropped network or expired session otherwise fails every remaining player).
 # If logging in again fails RETRY_ATTEMPTS times, RELOGIN_RETRY_DELAY seconds apart,
 # the run stops and saves what it has. Failed players get one more try at the end.
+# The same RETRY_ATTEMPTS x RELOGIN_RETRY_DELAY rides out a LEO outage at the first login
+# and the Advanced Search (MKT), so a short outage does not fail a scheduled run.
 MAX_CONSECUTIVE_FAILURES = 2
 RELOGIN_RETRY_DELAY = 30
 
