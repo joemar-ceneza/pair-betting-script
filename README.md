@@ -19,7 +19,9 @@ like a person would), fills the form and clicks **Search**:
 | Promotion status | any | `MKT_PROMOTION_STATUS = "-1"` |
 | Row limit | Top 10000 | `MKT_ROW_LIMIT = "top_10000"` |
 
-The result table is read straight from the page (no Excel download). LEO lists an
+The result table is read straight from the page (no Excel download). Each account's
+promotion code and status are shown in its player block, in every flagged pair
+(`Promotion A` / `Promotion B`) and in the CSVs; `-` means no promotion. LEO lists an
 account once per service provider, so repeated account IDs are checked only once.
 Every account found is saved to `accounts_YYYYMMDD.csv`. If the search returns the
 full 10,000 rows, a warning says some accounts may be missing.
@@ -161,9 +163,9 @@ Example: checking 10/14 on the morning of 10/15 gives
 | File | Contents |
 |---|---|
 | `accounts_YYYYMMDD.csv` | Accounts found by Advanced Search (MKT): account ID, created date, currency, deposit status, promotion code and status |
-| `player_info_YYYYMMDD.csv` | Basic information per player |
+| `player_info_YYYYMMDD.csv` | Basic information per player, including promotion code and status from Advanced Search (MKT) |
 | `bets_YYYYMMDD.csv` | Every Live Casino bet |
-| `pair_betting_YYYYMMDD.csv` | Every pair with shared rounds or a shared IP: risk, pattern (HEDGE / CHIP DUMP), signals, one-way flow direction and amount |
+| `pair_betting_YYYYMMDD.csv` | Every pair with shared rounds or a shared IP: risk, pattern (HEDGE / CHIP DUMP), signals, one-way flow direction and amount, each account's promotion (`promotion_a` / `promotion_b`, e.g. `MAX125 (Activated)`) |
 | `pair_rounds_YYYYMMDD.csv` | Every shared round per pair: round type, stakes, results, seconds between bets, reference numbers |
 
 ## Building the Exe (Nuitka)

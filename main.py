@@ -194,14 +194,13 @@ def main() -> None:
     # Step 3: Find the accounts to check with Advanced Search (MKT)
     _log_step(3, "Finding accounts (Advanced Search MKT)")
     accounts = account_search.run_account_search((leo_username, leo_password), report_date)
-    usernames = [account["account_id"] for account in accounts]
-    if len(usernames) < 2:
-        logging.warning("Need at least 2 accounts to compare, found %d. Exiting.", len(usernames))
+    if len(accounts) < 2:
+        logging.warning("Need at least 2 accounts to compare, found %d. Exiting.", len(accounts))
         return
 
     # Step 4: Scrape basic info, statement figures and bet lists
-    _log_step(4, f"Scraping {len(usernames)} players")
-    scrape_result = scraper.run_scraper(usernames, leo_username, leo_password, report_date)
+    _log_step(4, f"Scraping {len(accounts)} players")
+    scrape_result = scraper.run_scraper(accounts, leo_username, leo_password, report_date)
     _warn_if_no_bets(scrape_result)
 
     # Step 5: Detect pair betting

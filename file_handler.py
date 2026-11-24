@@ -25,6 +25,8 @@ PLAYER_COLUMNS = [
     "last_logged_url",
     "status",
     "cash_balance",
+    "promotion_code",
+    "promotion_status",
     "turnover",
     "winloss",
     "bet_count",
@@ -63,6 +65,8 @@ PAIR_COLUMNS = [
     "flow_direction",
     "flow_amount",
     "shared_ips",
+    "promotion_a",
+    "promotion_b",
     "signals",
 ]
 EVIDENCE_COLUMNS = [

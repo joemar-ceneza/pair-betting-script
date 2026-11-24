@@ -85,6 +85,11 @@ def _build_round_index(rounds: list[dict]) -> dict[tuple, list[dict]]:
     return index
 
 
+def _format_promotion(player: dict) -> str:
+    """'MAX125 (Activated)', or '- (-)' when the account has no promotion."""
+    return f"{player.get('promotion_code', '-')} ({player.get('promotion_status', '-')})"
+
+
 def _collect_user_ips(players: list[dict], bets: list[dict]) -> dict[str, set[str]]:
     """Collect every IP seen per user: last login IP plus all bet IPs."""
     ips = defaultdict(set)
@@ -367,6 +372,8 @@ def _log_pair_report(summary: dict) -> None:
             log_utils.field("Opposite net", _format_opposite_net(summary)),
             log_utils.field("One-way flow", _format_flow(summary)),
             log_utils.field("Shared IPs", summary["shared_ips"]),
+            log_utils.field("Promotion A", summary["promotion_a"]),
+            log_utils.field("Promotion B", summary["promotion_b"]),
             log_utils.field("Signals", summary["signals"]),
         ]
     )
@@ -395,6 +402,7 @@ def run_analysis(players: list[dict], bets: list[dict]) -> dict:
     user_ips = _collect_user_ips(players, bets)
     usernames = sorted({p["username"] for p in players})
     currency_by_user = {p["username"]: p["currency"] for p in players}
+    promotion_by_user = {p["username"]: _format_promotion(p) for p in players}
 
     pairs, evidence = [], []
     for user_a, user_b in combinations(usernames, 2):
@@ -403,6 +411,7 @@ def run_analysis(players: list[dict], bets: list[dict]) -> dict:
         summary = _summarize_pair(user_a, user_b, matches, user_ips[user_a] & user_ips[user_b], currencies)
         if summary["risk"] is None:
             continue
+        summary["promotion_a"], summary["promotion_b"] = promotion_by_user[user_a], promotion_by_user[user_b]
         pairs.append(summary)
         evidence.extend(_build_evidence(summary, matches))
 

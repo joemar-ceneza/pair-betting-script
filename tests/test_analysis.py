@@ -123,6 +123,19 @@ class CurrencyTests(unittest.TestCase):
         self.assertEqual(pair["opposite_net"], "-")
 
 
+class PromotionTests(unittest.TestCase):
+    def test_each_account_keeps_its_own_promotion(self) -> None:
+        alice = {**_player("alice"), "promotion_code": "MAX125", "promotion_status": "Activated"}
+        bob = {**_player("bob"), "promotion_code": "-", "promotion_status": "-"}
+        pair = _only_pair(analysis.run_analysis([alice, bob], _opposite_rounds("aaaa")))
+        self.assertEqual((pair["user_a"], pair["promotion_a"]), ("alice", "MAX125 (Activated)"))
+        self.assertEqual((pair["user_b"], pair["promotion_b"]), ("bob", "- (-)"))
+
+    def test_players_without_promotion_fields_show_dash(self) -> None:
+        pair = _only_pair(analysis.run_analysis([_player("alice"), _player("bob")], _opposite_rounds("abab")))
+        self.assertEqual((pair["promotion_a"], pair["promotion_b"]), ("- (-)", "- (-)"))
+
+
 class RoundTests(unittest.TestCase):
     def test_bets_in_same_round_are_merged(self) -> None:
         bets = [_bet("alice", 0, 100.0), _bet("alice", 0, 100.0), _bet("alice", 1, -50.0)]

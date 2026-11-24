@@ -72,7 +72,10 @@ _INFO_LABELS = [
     ("last_logged_url", "Last Logged On Url"),
     ("status", "Status"),
     ("cash_balance", "Cash Balance"),
+    ("promotion_code", "Promotion code"),
+    ("promotion_status", "Promotion status"),
 ]
+_NO_PROMOTION = {"promotion_code": "-", "promotion_status": "-"}
 
 
 # ======================================================
@@ -326,9 +329,9 @@ def _build_player_report(info: dict) -> list[str]:
 
 
 def _handle_player(
-    pages: tuple[Page, Page], username: str, report_date: date, position: str
+    pages: tuple[Page, Page], username: str, report_date: date, position: str, promotion: dict
 ) -> tuple[Optional[dict], list[dict], Optional[str]]:
-    """Process one player with retries and log their lines under their header."""
+    """Process one player with retries, add their promotion, and log their lines under their header."""
     leo_page, betlist_page = pages
     log_utils.log_section(f"[{position}] {username}")
     started = time.monotonic()
@@ -343,6 +346,7 @@ def _handle_player(
         leo_session.save_error_screenshot(leo_page, username)
         logging.info("[%s] %s — ERROR (%.1fs)", position, username, time.monotonic() - started)
         return None, [], str(error)
+    info.update(promotion)
     log_utils.log_lines(_build_player_report(info))
     logging.info("[%s] %s — done, %d bets (%.1fs)", position, username, len(bets), time.monotonic() - started)
     return info, bets, None
@@ -373,14 +377,20 @@ def _stop_batch(batch: dict, remaining: list[str]) -> None:
 
 
 def _scrape_batch(
-    pages: tuple[Page, Page], usernames: list[str], report_date: date, credentials: tuple[str, str], label: str
+    pages: tuple[Page, Page],
+    usernames: list[str],
+    report_date: date,
+    credentials: tuple[str, str],
+    promotions: dict[str, dict],
+    label: str,
 ) -> dict:
     """Process players in order; log in again after MAX_CONSECUTIVE_FAILURES failures in a row."""
     batch, streak = _new_batch(), 0
     for index, username in enumerate(usernames, start=1):
         _refresh_if_due(pages[0], index)
         position = f"{label}{index}/{len(usernames)}"
-        info, player_bets, error = _handle_player(pages, username, report_date, position)
+        promotion = promotions.get(username, _NO_PROMOTION)
+        info, player_bets, error = _handle_player(pages, username, report_date, position, promotion)
         _record_player(batch, username, info, player_bets, error)
         streak = streak + 1 if error else 0
         if streak < config.MAX_CONSECUTIVE_FAILURES:
@@ -394,14 +404,14 @@ def _scrape_batch(
 
 
 def _retry_failed_players(
-    pages: tuple[Page, Page], first: dict, report_date: date, credentials: tuple[str, str]
+    pages: tuple[Page, Page], first: dict, report_date: date, credentials: tuple[str, str], promotions: dict[str, dict]
 ) -> dict:
     """Give every failed player one more try after the main pass, and merge both passes."""
     retry_names = [username for username, _ in first["failures"]]
     if first["stopped"] or not retry_names:
         return {**first, "recovered": 0}
     log_utils.log_section(f"RETRYING {len(retry_names)} FAILED PLAYER(S)")
-    second = _scrape_batch(pages, retry_names, report_date, credentials, "retry ")
+    second = _scrape_batch(pages, retry_names, report_date, credentials, promotions, "retry ")
     logging.info("Retry pass: %d of %d player(s) recovered.", len(second["players"]), len(retry_names))
     return {
         "players": first["players"] + second["players"],
@@ -414,16 +424,32 @@ def _retry_failed_players(
 
 
 # ======================================================
+# PROMOTIONS (from Advanced Search (MKT))
+# ======================================================
+def _build_promotions(accounts: list[dict]) -> dict[str, dict]:
+    """account_id -> {promotion_code, promotion_status} from the Advanced Search (MKT) records."""
+    return {
+        account["account_id"]: {
+            "promotion_code": account.get("promotion_code", "-"),
+            "promotion_status": account.get("promotion_status", "-"),
+        }
+        for account in accounts
+    }
+
+
+# ======================================================
 # PUBLIC ENTRY POINT
 # ======================================================
-def run_scraper(usernames: list[str], leo_username: str, leo_password: str, report_date: date) -> dict:
+def run_scraper(accounts: list[dict], leo_username: str, leo_password: str, report_date: date) -> dict:
     """
-    Log into LEO, then for each player collect basic info, the Live Casino win/loss
-    and turnover from the daily statement, and the bet list for report_date.
-    Logs in again when the session drops, and retries failed players once at the end.
-    Returns players, bets, failures, relogins, recovered and stopped.
+    Log into LEO, then for each account found by Advanced Search (MKT) collect basic info,
+    its promotion, the Live Casino win/loss and turnover from the daily statement, and the
+    bet list for report_date. Logs in again when the session drops, and retries failed
+    players once at the end. Returns players, bets, failures, relogins, recovered and stopped.
     """
     credentials = (leo_username, leo_password)
+    usernames = [account["account_id"] for account in accounts]
+    promotions = _build_promotions(accounts)
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=config.HEADLESS)
         try:
@@ -431,7 +457,7 @@ def run_scraper(usernames: list[str], leo_username: str, leo_password: str, repo
             pages = (context.new_page(), context.new_page())
             leo_session.first_login(pages[0], credentials)
             leo_session.pause(pages[0])
-            first = _scrape_batch(pages, usernames, report_date, credentials, "")
-            return _retry_failed_players(pages, first, report_date, credentials)
+            first = _scrape_batch(pages, usernames, report_date, credentials, promotions, "")
+            return _retry_failed_players(pages, first, report_date, credentials, promotions)
         finally:
             leo_session.close_browser(browser)
